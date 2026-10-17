@@ -1,0 +1,102 @@
+# =============================================================================
+# GitHub Actions workflow: Clang Lifetime Safety Analysis & Polonius Model
+#
+# verifies compile-time borrow safety, view lifetime bounding, and ownership
+# ~ حارس دورة حياة المؤشرات: بيكتشف المؤشرات المعلقة والافتراضات غير الآمنة في وقت الترجمة
+# =============================================================================
+
+name: Lifetime Safety Analysis
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  clang-lifetime-safety:
+    name: Clang Lifetime Safety Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Tree
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install Toolchain and Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build wget lsb-release software-properties-common gnupg
+          # Install cutting-edge Clang with -Wlifetime-safety support
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 20 || sudo apt-get install -y clang llvm
+          python -m pip install --upgrade pip pybind11 duckdb pytest hypothesis
+
+      - name: Detect Clang Compiler
+        id: detect-clang
+        run: |
+          if command -v clang++-20 >/dev/null 2>&1; then
+            echo "cxx=clang++-20" >> $GITHUB_OUTPUT
+            echo "cc=clang-20" >> $GITHUB_OUTPUT
+          elif command -v clang++-19 >/dev/null 2>&1; then
+            echo "cxx=clang++-19" >> $GITHUB_OUTPUT
+            echo "cc=clang-19" >> $GITHUB_OUTPUT
+          else
+            echo "cxx=clang++" >> $GITHUB_OUTPUT
+            echo "cc=clang" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Configure CMake with Lifetime Safety Analysis
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_CXX_COMPILER=${{ steps.detect-clang.outputs.cxx }} \
+            -DCMAKE_C_COMPILER=${{ steps.detect-clang.outputs.cc }} \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DENABLE_LIFETIME_SAFETY=ON
+
+      - name: Build Engine, Extensions, and Test Targets
+        run: |
+          ninja -C build
+
+      - name: Run C++ Unit Tests
+        run: |
+          ./build/UnitTests
+
+      - name: Run DuckDB Integration Tests
+        run: |
+          ./build/IntegrationDuckdb
+
+      - name: Verify Negative Diagnostic (Borrow Checker Catches Dangling View)
+        run: |
+          cat << 'EOF' > test_dangle.cpp
+          #include "librazobill/Lifetime.hpp"
+          #include <string>
+          #include <string_view>
+          #include <iostream>
+
+          std::string_view badBorrow() {
+              std::string s = "temporary stack string";
+              return s; // MUST be caught by -Wlifetime-safety / -Wreturn-stack-address
+          }
+
+          int main() {
+              std::cout << badBorrow() << std::endl;
+              return 0;
+          }
+          EOF
+          if ${{ steps.detect-clang.outputs.cxx }} -std=c++20 -fsyntax-only -Iinclude -isystem thirdparty -Werror=return-stack-address -Wlifetime-safety test_dangle.cpp 2>&1; then
+            echo "ERROR: Lifetime safety checker failed to reject dangling view!"
+            exit 1
+          else
+            echo "SUCCESS: Lifetime safety checker correctly rejected dangling view."
+          fi
+          rm -f test_dangle.cpp

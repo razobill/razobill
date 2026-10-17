@@ -7,17 +7,22 @@
 // filesystem paths across platforms, and formats structured result metrics
 // =============================================================================
 
+#ifndef _CRT_SECURE_NO_WARNINGS
+#define _CRT_SECURE_NO_WARNINGS
+#endif
+
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <string>
 
 #include "librazobill/Backend.hpp"
+#include "librazobill/Lifetime.hpp"
 
 namespace support {
 
 /// reads environment variable with fallback default
-inline const char* env(const char* k, const char* d) {
+inline const char* env(const char* k, const char* d RZ_LIFETIMEBOUND) {
     const char* v = std::getenv(k);
     return v ? v : d;
 }

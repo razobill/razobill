@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "duckdb_extension.h"
+#include "librazobill/Lifetime.hpp"
 #include "librazobill/Slots.hpp"
 
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
@@ -457,13 +458,13 @@ public:
     duckdb_logical_type t;
 
 private:
-    explicit Type(duckdb_logical_type owned) : t(owned) {}
+    explicit Type(duckdb_logical_type owned RZ_LIFETIMEBOUND) : t(owned) {}
 };
 
 /// RAII builder and registrar for DuckDB scalar function overloads
 class FunctionSet {
 public:
-    explicit FunctionSet(const char* name) : name_(name), set_(duckdb_create_scalar_function_set(name)) {}
+    explicit FunctionSet(const char* name RZ_LIFETIMEBOUND) : name_(name), set_(duckdb_create_scalar_function_set(name)) {}
     ~FunctionSet() {
         if (set_) duckdb_destroy_scalar_function_set(&set_);
     }

@@ -15,14 +15,49 @@ acceleration and pure-Python fallback
 import sys
 import os
 import glob
+import shutil
 from pathlib import Path
 from setuptools import setup
 
 baseDir = Path(__file__).resolve().parent
 repoRoot = baseDir.parent.parent
 
-# monorepo source routing vs standalone sdist distribution layout
+# sync staged core engine sources and headers when in monorepo layout so that
+# isolated build environments (pip wheel, cibuildwheel, sdist) always bundle
+# complete C++20 engine sources
+srcCore = baseDir / "srcCore"
+includeCore = baseDir / "includeCore"
+thirdpartyCore = baseDir / "thirdpartyCore"
+
 if (repoRoot / "src").exists() and (repoRoot / "include").exists():
+    try:
+        shutil.copytree(repoRoot / "src", srcCore, dirs_exist_ok=True)
+        shutil.copytree(repoRoot / "include", includeCore, dirs_exist_ok=True)
+        thirdpartyCore.mkdir(parents=True, exist_ok=True)
+        if (repoRoot / "thirdparty" / "adbc").exists():
+            shutil.copytree(repoRoot / "thirdparty" / "adbc", thirdpartyCore / "adbc", dirs_exist_ok=True)
+        if (repoRoot / "thirdparty" / "duckdbcapi").exists():
+            shutil.copytree(repoRoot / "thirdparty" / "duckdbcapi", thirdpartyCore / "duckdbcapi", dirs_exist_ok=True)
+    except Exception:
+        pass
+
+if srcCore.exists() and includeCore.exists():
+    sources = [
+        "PyRazobill.cpp",
+        "srcCore/Slots.cpp",
+        "srcCore/Stats.cpp",
+        "srcCore/Channel.cpp",
+        "srcCore/Dialect.cpp",
+        "srcCore/BackendAdbc.cpp",
+        "srcCore/Razobill.cpp",
+        "srcCore/RazobillC.cpp",
+    ]
+    includeDirs = [
+        "includeCore",
+        "thirdpartyCore/adbc",
+        "thirdpartyCore/duckdbcapi",
+    ]
+elif (repoRoot / "src").exists() and (repoRoot / "include").exists():
     sources = [
         "PyRazobill.cpp",
         os.path.relpath(repoRoot / "src" / "Slots.cpp", baseDir).replace("\\", "/"),
@@ -109,14 +144,18 @@ try:
                     ext.include_dirs.extend(inc_dirs)
                     ext.library_dirs.extend(lib_dirs)
                 else:
-                    # enable C++20, host-native SIMD instructions, and hidden
-                    # symbol visibility
-                    ext.extra_compile_args.extend(["-std=c++20", "-march=native", "-fvisibility=hidden"])
+                    # enable C++20 and hidden symbol visibility
+                    compile_args = ["-std=c++20", "-fvisibility=hidden"]
+                    if os.environ.get("ENABLE_NATIVE_OPTIMIZATION"):
+                        compile_args.append("-march=native")
+                    ext.extra_compile_args.extend(compile_args)
                     if sys.platform != "win32":
                         ext.extra_link_args.append("-lpthread")
             try:
                 super().build_extensions()
             except Exception as exc:
+                if os.environ.get("CIBUILDWHEEL") or os.environ.get("PYRAZOBILL_REQUIRE_NATIVE"):
+                    raise
                 # fall back to pure-Python engine if compilation fails
                 print(f"\n[pyrazobill] NOTICE: Native C++20 extension build failed ({exc}).")
                 print("[pyrazobill] Proceeding with pure-Python fallback implementation.\n")

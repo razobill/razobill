@@ -73,3 +73,10 @@ include = ["pyrazobill*"]
 [tool.setuptools.package-data]
 # include type stubs (py.typed, Core.pyi) and compiled extension binaries
 pyrazobill = ["py.typed", "*.pyi", "*.pyd", "*.so", "*.dll"]
+
+[tool.cibuildwheel]
+build = "cp39-* cp310-* cp311-* cp312-* cp313-*"
+skip = "*-musllinux_* pp*"
+archs = ["x86_64", "aarch64"]
+manylinux-x86_64-image = "manylinux_2_28"
+manylinux-aarch64-image = "manylinux_2_28"

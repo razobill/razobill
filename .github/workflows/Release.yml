@@ -138,6 +138,13 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+      - name: Stage Core Sources and Headers
+        run: |
+          cp -r src lib/python/srcCore
+          cp -r include lib/python/includeCore
+          mkdir -p lib/python/thirdpartyCore
+          cp -r thirdparty/adbc lib/python/thirdpartyCore/adbc
+          cp -r thirdparty/duckdbcapi lib/python/thirdpartyCore/duckdbcapi
       - name: Set up QEMU for aarch64 Emulation
         uses: docker/setup-qemu-action@v4
         with:
@@ -150,6 +157,8 @@ jobs:
           CIBW_BUILD: "cp39-* cp310-* cp311-* cp312-* cp313-*"
           CIBW_ARCHS_LINUX: "x86_64 aarch64"
           CIBW_SKIP: "*-musllinux_* pp*"
+          CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_28"
+          CIBW_MANYLINUX_AARCH64_IMAGE: "manylinux_2_28"
       - name: Upload Linux Wheels
         uses: actions/upload-artifact@v7
         with:
@@ -239,6 +248,14 @@ jobs:
       - name: Install Packaging Dependencies
         run: |
           python -m pip install --upgrade pip build twine setuptools wheel pybind11
+
+      - name: Stage Core Sources and Headers
+        run: |
+          cp -r src lib/python/srcCore
+          cp -r include lib/python/includeCore
+          mkdir -p lib/python/thirdpartyCore
+          cp -r thirdparty/adbc lib/python/thirdpartyCore/adbc
+          cp -r thirdparty/duckdbcapi lib/python/thirdpartyCore/duckdbcapi
 
       - name: Build Source Distribution
         working-directory: lib/python

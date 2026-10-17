@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <string_view>
 
+#include "librazobill/Lifetime.hpp"
 #include "librazobill/SimdScanner.hpp"
 
 namespace razobill::core {
@@ -92,7 +93,7 @@ inline bool isContextKeyword(std::string_view w) noexcept {
 // -- single-pass tokenizer ----------------------------------------------------
 
 /// result of a single-pass tokenization scan
-struct ScanResult {
+struct RZ_GSL_POINTER ScanResult {
     std::string_view tail; // constant text remaining after final extracted token
     bool reserved;         // true if input contains reserved bytes (0x11..0x13)
 };

@@ -17,6 +17,7 @@
 
 #include "librazobill/Backend.hpp"
 #include "librazobill/Dialect.hpp"
+#include "librazobill/Lifetime.hpp"
 #include "librazobill/Scanner.hpp"
 #include "librazobill/Stats.hpp"
 
@@ -87,7 +88,7 @@ class RazobillEngine {
 public:
     /// initialize engine coordinator with backend connection and configuration
     /// in: backend reference to database backend, config configuration struct
-    RazobillEngine(Backend& backend, Config config);
+    RazobillEngine(Backend& backend RZ_LIFETIMEBOUND, Config config);
 
     // ---- Storage ----
 

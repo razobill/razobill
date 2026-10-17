@@ -15,13 +15,15 @@
 #include <utility>
 #include <vector>
 
+#include "librazobill/Lifetime.hpp"
+
 namespace razobill::core {
 
 // -- memory arena allocator ---------------------------------------------------
 
 /// monotonic bump allocator providing zero-allocation reuse on the hot path
 /// inv: bulk reset rewinds bump offsets without freeing backing heap pages
-class MemoryArena {
+class RZ_GSL_OWNER MemoryArena {
 public:
     /// contiguous memory block allocated with 64-byte cache-line alignment
     struct Block {

@@ -15,6 +15,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "librazobill/Lifetime.hpp"
+
 namespace razobill::core {
 
 // -- compaction statistics ----------------------------------------------------
@@ -56,7 +58,7 @@ struct TransparentStringEqual {
 
 /// thread-safe string pool assigning dense 32-bit ids to unique strings
 /// inv: deque storage guarantees pointer stability across push_back (intern)
-class StringPool {
+class RZ_GSL_OWNER StringPool {
 public:
     StringPool() = default;
 
@@ -97,7 +99,7 @@ public:
     ///      runs
     /// thread: reads under shared_lock, but lock releases before returning view
     /// err: returns empty string_view on out-of-range id
-    [[nodiscard]] std::string_view lookup(std::uint32_t id) const {
+    [[nodiscard]] std::string_view lookup(std::uint32_t id) const RZ_LIFETIMEBOUND {
         std::shared_lock<std::shared_mutex> lock(mutex_);
         if (id < idToStr_.size()) {
             return idToStr_[id];

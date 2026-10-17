@@ -30,3 +30,4 @@ ignores:
   - "thirdparty/**"
   - ".git/**"
   - "extension-ci-tools/**"
+  - ".superpowers/**"

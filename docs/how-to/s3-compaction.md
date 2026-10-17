@@ -39,7 +39,7 @@ Queries download only requested columns, while audits can reconstruct the exact 
 
 ## Prerequisites
 
-- DuckDB 1.2.0 or newer.
+- DuckDB 1.5.6 or newer.
 - An Amazon S3 bucket (or local MinIO/LocalStack instance).
 - DuckDB extensions `httpfs` and `razobill`.
 

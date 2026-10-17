@@ -55,7 +55,7 @@ jobs:
 
       - name: Install Python Build Dependencies
         run: |
-          python -m pip install --upgrade pip setuptools wheel pybind11 duckdb pytest hypothesis ninja
+          python -m pip install --upgrade pip setuptools wheel pybind11 "duckdb>=1.5.6" pytest hypothesis ninja
 
       - name: Set up MSVC Compiler
         if: runner.os == 'Windows'
@@ -97,7 +97,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build g++-13 curl xz-utils
-          python -m pip install --upgrade pip pybind11 duckdb pytest
+          python -m pip install --upgrade pip pybind11 "duckdb>=1.5.6" pytest
 
       - name: Download & Extract Intel SDE
         run: |

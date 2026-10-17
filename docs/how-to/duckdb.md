@@ -21,7 +21,7 @@ Storing raw log lines as unstructured text in DuckDB causes three operational bo
 
 ## Prerequisites
 
-- DuckDB CLI version 1.2.0 or newer.
+- DuckDB CLI version 1.5.6 or newer.
 - An existing table with log strings or permissions to install community extensions.
 
 ---

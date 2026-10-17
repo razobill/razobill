@@ -52,7 +52,7 @@ If pre-compiled wheels are unavailable for your specific architecture, `pip` fal
 
 | Engine or tool | Version or ABI | Integration type | Maturity |
 | :--- | :--- | :--- | :---: |
-| **DuckDB** | 1.2.x series (ABI `v1.2.0`) | Native C extension (`razobill.duckdb_extension`) | Stable |
+| **DuckDB** | 1.5.x series (ABI `v1.5.6`) | Native C extension (`razobill.duckdb_extension`) | Stable |
 | **ClickHouse** | 23.x, 24.x | xxHash64 bit-parity in MergeTree tables | Beta |
 | **chDB** | 2.0+ | Python embedded ClickHouse engine | Beta |
 | **OpenTelemetry Collector** | Collector v0.111.0+ | Go processor component (`razobillprocessor`) | Beta |

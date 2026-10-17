@@ -17,7 +17,8 @@ EXTENSION_CANONICAL=razobill
 USE_UNSTABLE_C_API=0
 
 # Target DuckDB C API baseline version for ABI metadata
-TARGET_DUCKDB_VERSION=v1.5.4
+TARGET_DUCKDB_VERSION=v1.5.6
+EXTENSION_VERSION=v1.1.3
 
 # Pass build flag to build only the extension in CI
 CMAKE_EXTRA_BUILD_FLAGS=-DRAZOBILL_BUILD_EXT_ONLY=ON

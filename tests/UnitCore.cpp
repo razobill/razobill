@@ -251,11 +251,11 @@ TEST_CASE("semantic versioning and ABI contract") {
     auto v = razobill::version();
     CHECK(v.major == 1);
     CHECK(v.minor == 1);
-    CHECK(v.patch == 2);
+    CHECK(v.patch == 3);
     CHECK(v.abi == 1);
-    CHECK(std::string_view(v.string) == "1.1.2");
+    CHECK(std::string_view(v.string) == "1.1.3");
     CHECK(razobill::abiVersion() == 1);
-    CHECK(razobill::versionString() == "1.1.2");
+    CHECK(razobill::versionString() == "1.1.3");
 }
 
 // pins SIMD delimiter scanning on >64 byte inputs across instruction sets

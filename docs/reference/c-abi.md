@@ -212,7 +212,7 @@ RZ_API const char* RzVersion(void);
 RZ_API int RzAbiVersion(void);
 ```
 
-`RzVersion()` returns `"1.1.2"`. `RzAbiVersion()` returns `1`.
+`RzVersion()` returns `"1.1.3"`. `RzAbiVersion()` returns `1`.
 
 - **Stability**: Stable.
 - **Since version**: 1.0.0.

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
+## [1.1.3] - 2026-10-18
+
+### Changed
+
+- **DuckDB Extension API Upgrade**:
+  - Upgraded DuckDB extension C API headers and metadata stamping to DuckDB v1.5.6.
+  - Aligned build configurations (`Makefile` with `TARGET_DUCKDB_VERSION=v1.5.6` and `CMakeLists.txt` with `-dv v1.5.6`).
+  - Bumped Python test dependency baseline to `duckdb>=1.5.6`.
+  - Updated community distribution manifest `ext/duckdb/description.yml` to `1.1.3` (`v1.1.3`).
+
+---
+
 ## [1.1.2] - 2026-10-16
 
 ### Fixed

@@ -1,6 +1,6 @@
 # Razobill
 
-> Razobill is an open-source log parser (C++20, Apache 2.0) that splits each log line into a template plus typed values (integers and strings) and rebuilds the exact original line from them. It ships as pyrazobill (Python), a DuckDB extension, and a C API. Current version: 1.1.2.
+> Razobill is an open-source log parser (C++20, Apache 2.0) that splits each log line into a template plus typed values (integers and strings) and rebuilds the exact original line from them. It ships as pyrazobill (Python), a DuckDB extension, and a C API. Current version: 1.1.3.
 
 The name is spelled "Razobill". Its mascot is a razorbill, a seabird.
 

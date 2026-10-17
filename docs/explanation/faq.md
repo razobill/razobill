@@ -62,7 +62,7 @@ Razobill enforces a hard limit of 16 MiB ($16 \times 1024 \times 1024$ bytes) pe
 
 ## What DuckDB versions are supported?
 
-Razobill is built and validated against DuckDB 1.2.x via the stable DuckDB C extension ABI. Binary wheels are tested against DuckDB 1.2.0 and track upcoming release candidates in CI. See [Compatibility matrix](../reference/compatibility.md).
+Razobill is built and validated against DuckDB 1.5.x via the stable DuckDB C extension ABI (v1.5.6). Binary wheels are tested against DuckDB 1.5.6 and track upcoming release candidates in CI. See [Compatibility matrix](../reference/compatibility.md).
 
 ---
 

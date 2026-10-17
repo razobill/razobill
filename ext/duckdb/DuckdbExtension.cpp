@@ -290,6 +290,67 @@ void RzSplitImpl(duckdb_function_info info, duckdb_data_chunk in, duckdb_vector 
     sc.trim();
 }
 
+/// decode multi-width list integer values from DuckDB physical child buffer
+/// in: a is valid Arg with Kind::IntList, r is row index in parent chunk
+/// out: appends decoded 64-bit integers to outInts; returns false on NULL child entry or unknown type
+/// thread: thread-safe
+inline bool appendIntListValues(const Arg& a, idx_t r, std::vector<std::int64_t>& outInts) noexcept {
+    const auto entry = static_cast<const duckdb_list_entry*>(a.data)[r];
+    for (idx_t i = 0; i < entry.length; ++i) {
+        const idx_t childIdx = entry.offset + i;
+        if (!isValid(a.childValidity, childIdx)) {
+            return false;
+        }
+        std::int64_t val = 0;
+        switch (a.elemType) {
+        case DUCKDB_TYPE_BIGINT:
+            val = static_cast<const std::int64_t*>(a.childData)[childIdx];
+            break;
+        case DUCKDB_TYPE_INTEGER:
+            val = static_cast<std::int64_t>(static_cast<const std::int32_t*>(a.childData)[childIdx]);
+            break;
+        case DUCKDB_TYPE_SMALLINT:
+            val = static_cast<std::int64_t>(static_cast<const std::int16_t*>(a.childData)[childIdx]);
+            break;
+        case DUCKDB_TYPE_TINYINT:
+            val = static_cast<std::int64_t>(static_cast<const std::int8_t*>(a.childData)[childIdx]);
+            break;
+        case DUCKDB_TYPE_UBIGINT:
+            val = static_cast<std::int64_t>(static_cast<const std::uint64_t*>(a.childData)[childIdx]);
+            break;
+        case DUCKDB_TYPE_UINTEGER:
+            val = static_cast<std::int64_t>(static_cast<const std::uint32_t*>(a.childData)[childIdx]);
+            break;
+        case DUCKDB_TYPE_USMALLINT:
+            val = static_cast<std::int64_t>(static_cast<const std::uint16_t*>(a.childData)[childIdx]);
+            break;
+        case DUCKDB_TYPE_UTINYINT:
+            val = static_cast<std::int64_t>(static_cast<const std::uint8_t*>(a.childData)[childIdx]);
+            break;
+        default:
+            return false;
+        }
+        outInts.push_back(val);
+    }
+    return true;
+}
+
+/// decode string list values from DuckDB physical child buffer
+/// in: a is valid Arg with Kind::StrList, r is row index in parent chunk
+/// out: appends string views to outStrs; returns false on NULL child entry
+/// thread: thread-safe
+inline bool appendStrListValues(const Arg& a, idx_t r, std::vector<std::string_view>& outStrs) noexcept {
+    const auto entry = static_cast<const duckdb_list_entry*>(a.data)[r];
+    auto* p = static_cast<duckdb_string_t*>(a.childData);
+    for (idx_t i = 0; i < entry.length; ++i) {
+        if (!isValid(a.childValidity, entry.offset + i)) {
+            return false;
+        }
+        outStrs.push_back(viewOf(p[entry.offset + i]));
+    }
+    return true;
+}
+
 /// vectorized SQL scalar implementation for RzJoin(template, ints, strs, ...)
 /// inv: RzJoin(*RzSplit(x)) == x
 /// in: column 0 is template; subsequent columns are lists or varargs
@@ -369,61 +430,16 @@ void RzJoinImpl(duckdb_function_info info, duckdb_data_chunk in, duckdb_vector o
             case Kind::Str:
                 sc.strs.push_back(viewOf(static_cast<duckdb_string_t*>(a.data)[r]));
                 break;
-            case Kind::IntList: {
-                const auto entry = static_cast<const duckdb_list_entry*>(a.data)[r];
-                for (idx_t i = 0; i < entry.length; ++i) {
-                    const idx_t childIdx = entry.offset + i;
-                    if (!isValid(a.childValidity, childIdx)) {
-                        rowHasNullArg = true;
-                        break;
-                    }
-                    std::int64_t val = 0;
-                    switch (a.elemType) {
-                    case DUCKDB_TYPE_BIGINT:
-                        val = static_cast<const std::int64_t*>(a.childData)[childIdx];
-                        break;
-                    case DUCKDB_TYPE_INTEGER:
-                        val = static_cast<std::int64_t>(static_cast<const std::int32_t*>(a.childData)[childIdx]);
-                        break;
-                    case DUCKDB_TYPE_SMALLINT:
-                        val = static_cast<std::int64_t>(static_cast<const std::int16_t*>(a.childData)[childIdx]);
-                        break;
-                    case DUCKDB_TYPE_TINYINT:
-                        val = static_cast<std::int64_t>(static_cast<const std::int8_t*>(a.childData)[childIdx]);
-                        break;
-                    case DUCKDB_TYPE_UBIGINT:
-                        val = static_cast<std::int64_t>(static_cast<const std::uint64_t*>(a.childData)[childIdx]);
-                        break;
-                    case DUCKDB_TYPE_UINTEGER:
-                        val = static_cast<std::int64_t>(static_cast<const std::uint32_t*>(a.childData)[childIdx]);
-                        break;
-                    case DUCKDB_TYPE_USMALLINT:
-                        val = static_cast<std::int64_t>(static_cast<const std::uint16_t*>(a.childData)[childIdx]);
-                        break;
-                    case DUCKDB_TYPE_UTINYINT:
-                        val = static_cast<std::int64_t>(static_cast<const std::uint8_t*>(a.childData)[childIdx]);
-                        break;
-                    default:
-                        rowHasNullArg = true;
-                        break;
-                    }
-                    if (rowHasNullArg) break;
-                    sc.ints.push_back(val);
+            case Kind::IntList:
+                if (!appendIntListValues(a, r, sc.ints)) {
+                    rowHasNullArg = true;
                 }
                 break;
-            }
-            case Kind::StrList: {
-                const auto entry = static_cast<const duckdb_list_entry*>(a.data)[r];
-                auto* p = static_cast<duckdb_string_t*>(a.childData);
-                for (idx_t i = 0; i < entry.length; ++i) {
-                    if (!isValid(a.childValidity, entry.offset + i)) {
-                        rowHasNullArg = true;
-                        break;
-                    }
-                    sc.strs.push_back(viewOf(p[entry.offset + i]));
+            case Kind::StrList:
+                if (!appendStrListValues(a, r, sc.strs)) {
+                    rowHasNullArg = true;
                 }
                 break;
-            }
             case Kind::Unsupported:
                 rowHasNullArg = true;
                 break;

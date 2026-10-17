@@ -17,6 +17,8 @@
 #include <cstdint>
 #include <string_view>
 
+#include "librazobill/Lifetime.hpp"
+
 #define LIBRAZOBILL_VERSION_MAJOR 1
 #define LIBRAZOBILL_VERSION_MINOR 1
 #define LIBRAZOBILL_VERSION_PATCH 2

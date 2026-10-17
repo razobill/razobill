@@ -488,6 +488,13 @@ TEST_CASE("composite struct decomposition in DuckDB SQL") {
     CHECK(
         b->query("SELECT count(*) FROM (SELECT RzJoin('', []::BIGINT[], []::VARCHAR[]) AS x) WHERE x = ''").i64(0, 0) ==
         1);
+
+    // verify RzJoin with diverse list integer types (INTEGER, SMALLINT, TINYINT, UBIGINT)
+    CHECK(b->query("SELECT RzJoin('test {i} {i}', [10::INTEGER, 20::INTEGER], []::VARCHAR[])").str(0, 0) ==
+          "test 10 20");
+    CHECK(b->query("SELECT RzJoin('val {i}', [42::SMALLINT], []::VARCHAR[])").str(0, 0) == "val 42");
+    CHECK(b->query("SELECT RzJoin('val {i}', [7::TINYINT], []::VARCHAR[])").str(0, 0) == "val 7");
+    CHECK(b->query("SELECT RzJoin('val {i}', [999::UBIGINT], []::VARCHAR[])").str(0, 0) == "val 999");
 }
 
 // pins raw binary BLOB round-trip over invalid UTF-8 byte sequences

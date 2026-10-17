@@ -105,11 +105,13 @@ std::string sysLastError() {
 
 /// return null bitmap buffer pointer from Arrow array
 const std::uint8_t* validity(const ArrowArray* a) {
-    return static_cast<const std::uint8_t*>(a->n_buffers > 0 ? a->buffers[0] : nullptr);
+    if (!a || a->n_buffers == 0) return nullptr;
+    return static_cast<const std::uint8_t*>(a->buffers[0]);
 }
 
 /// test validity bit for row index i; null buffer implies all rows valid
 bool isValid(const ArrowArray* a, std::int64_t i) {
+    if (!a || i < 0 || i >= a->length) return false;
     const auto* v = validity(a);
     const auto k = static_cast<std::uint64_t>(i + a->offset);
     return v == nullptr || (((static_cast<unsigned int>(v[k >> 3U]) >> (k & 7U)) & 1U) != 0U);
@@ -146,6 +148,7 @@ Value decode(const char* fmt, const ArrowArray* a, std::int64_t i) {
             ((static_cast<unsigned int>(static_cast<const std::uint8_t*>(a->buffers[1])[k >> 3U]) >> (k & 7U)) & 1U));
     }
     if (!std::strncmp(fmt, "d:", 2)) {
+        if (!a || a->n_buffers < 2 || !a->buffers[1]) return 0.0;
         int precision = 0;
         int scale = 0;
         int bits = 128;
@@ -176,7 +179,7 @@ Value decode(const char* fmt, const ArrowArray* a, std::int64_t i) {
     if (!std::strcmp(fmt, "u")) {
         if (!a || a->n_buffers < 2 || !a->buffers[1]) return std::string{};
         const auto* off = static_cast<const std::int32_t*>(a->buffers[1]) + a->offset;
-        if (off[i + 1] <= off[i]) return std::string{};
+        if (off[i] < 0 || off[i + 1] <= off[i]) return std::string{};
         const auto len = static_cast<std::size_t>(off[i + 1] - off[i]);
         if (a->n_buffers < 3 || !a->buffers[2]) return std::string{};
         return std::string(static_cast<const char*>(a->buffers[2]) + off[i], len);
@@ -184,7 +187,7 @@ Value decode(const char* fmt, const ArrowArray* a, std::int64_t i) {
     if (!std::strcmp(fmt, "U")) {
         if (!a || a->n_buffers < 2 || !a->buffers[1]) return std::string{};
         const auto* off = static_cast<const std::int64_t*>(a->buffers[1]) + a->offset;
-        if (off[i + 1] <= off[i]) return std::string{};
+        if (off[i] < 0 || off[i + 1] <= off[i]) return std::string{};
         const auto len = static_cast<std::size_t>(off[i + 1] - off[i]);
         if (a->n_buffers < 3 || !a->buffers[2]) return std::string{};
         return std::string(static_cast<const char*>(a->buffers[2]) + off[i], len);
@@ -205,63 +208,44 @@ public:
     /// initialize ADBC driver and connection from options struct
     /// in: o AdbcOptions containing driver path, entrypoint, and options
     explicit AdbcBackend(const AdbcOptions& o) : flavor_(o.flavor) {
-        const auto& preloads = !o.preloadGlobal.empty() ? o.preloadGlobal : o.preload_global;
-        for (const auto& lib : preloads) {
-            void* h = sysLoadLibrary(lib.c_str(), /*deepbind=*/false, /*global=*/true);
-            if (!h) {
-                throw BackendError("preload failed: " + sysLastError());
+        try {
+            const auto& preloads = !o.preloadGlobal.empty() ? o.preloadGlobal : o.preload_global;
+            for (const auto& lib : preloads) {
+                void* h = sysLoadLibrary(lib.c_str(), /*deepbind=*/false, /*global=*/true);
+                if (!h) {
+                    throw BackendError("preload failed: " + sysLastError());
+                }
+                preloadHandles_.push_back(h);
             }
-            preloadHandles_.push_back(h);
+            const std::string driverPath = !o.driverPath.empty() ? o.driverPath : o.driver_path;
+            lib_ = sysLoadLibrary(driverPath.c_str(), o.deepbind, /*global=*/false);
+            if (!lib_) throw BackendError("cannot load driver: " + sysLastError());
+            auto init = reinterpret_cast<AdbcDriverInitFunc>(sysLoadSymbol(lib_, o.entrypoint.c_str()));
+            if (!init) throw BackendError("driver entry point not found: " + o.entrypoint);
+            AdbcError err{};
+            std::memset(&driver_, 0, sizeof driver_);
+            if (init(ADBC_VERSION_1_1_0, &driver_, &err) != ADBC_STATUS_OK) fail("driver init", err);
+            if (driver_.DatabaseNew(&db_, &err) != ADBC_STATUS_OK) fail("DatabaseNew", err);
+            have_db_ = true;
+            const auto& dbOpts = !o.databaseOptions.empty() ? o.databaseOptions : o.database_options;
+            for (const auto& [k, v] : dbOpts)
+                if (driver_.DatabaseSetOption(&db_, k.c_str(), v.c_str(), &err) != ADBC_STATUS_OK)
+                    fail("DatabaseSetOption " + k, err);
+            if (driver_.DatabaseInit(&db_, &err) != ADBC_STATUS_OK) fail("DatabaseInit", err);
+            if (driver_.ConnectionNew(&conn_, &err) != ADBC_STATUS_OK) fail("ConnectionNew", err);
+            have_conn_ = true;
+            if (driver_.ConnectionInit(&conn_, &db_, &err) != ADBC_STATUS_OK) fail("ConnectionInit", err);
+            const auto& inits = !o.initSql.empty() ? o.initSql : o.init_sql;
+            for (const auto& s : inits)
+                exec(s);
+        } catch (...) {
+            cleanup();
+            throw;
         }
-        const std::string driverPath = !o.driverPath.empty() ? o.driverPath : o.driver_path;
-        lib_ = sysLoadLibrary(driverPath.c_str(), o.deepbind, /*global=*/false);
-        if (!lib_) throw BackendError("cannot load driver: " + sysLastError());
-        auto init = reinterpret_cast<AdbcDriverInitFunc>(sysLoadSymbol(lib_, o.entrypoint.c_str()));
-        if (!init) throw BackendError("driver entry point not found: " + o.entrypoint);
-        AdbcError err{};
-        std::memset(&driver_, 0, sizeof driver_);
-        if (init(ADBC_VERSION_1_1_0, &driver_, &err) != ADBC_STATUS_OK) fail("driver init", err);
-        if (driver_.DatabaseNew(&db_, &err) != ADBC_STATUS_OK) fail("DatabaseNew", err);
-        have_db_ = true;
-        const auto& dbOpts = !o.databaseOptions.empty() ? o.databaseOptions : o.database_options;
-        for (const auto& [k, v] : dbOpts)
-            if (driver_.DatabaseSetOption(&db_, k.c_str(), v.c_str(), &err) != ADBC_STATUS_OK)
-                fail("DatabaseSetOption " + k, err);
-        if (driver_.DatabaseInit(&db_, &err) != ADBC_STATUS_OK) fail("DatabaseInit", err);
-        if (driver_.ConnectionNew(&conn_, &err) != ADBC_STATUS_OK) fail("ConnectionNew", err);
-        have_conn_ = true;
-        if (driver_.ConnectionInit(&conn_, &db_, &err) != ADBC_STATUS_OK) fail("ConnectionInit", err);
-        const auto& inits = !o.initSql.empty() ? o.initSql : o.init_sql;
-        for (const auto& s : inits)
-            exec(s);
     }
 
     /// release ADBC connection, database, and dynamic library handles
-    ~AdbcBackend() override {
-        AdbcError err{};
-        if (have_conn_) {
-            driver_.ConnectionRelease(&conn_, &err);
-            if (err.release) {
-                err.release(&err);
-                err = AdbcError{};
-            }
-        }
-        if (have_db_) {
-            driver_.DatabaseRelease(&db_, &err);
-            if (err.release) {
-                err.release(&err);
-                err = AdbcError{};
-            }
-        }
-        if (lib_) {
-            sysUnloadLibrary(lib_);
-            lib_ = nullptr;
-        }
-        for (void* handle : std::views::reverse(preloadHandles_)) {
-            sysUnloadLibrary(handle);
-        }
-        preloadHandles_.clear();
-    }
+    ~AdbcBackend() override { cleanup(); }
 
     Flavor flavor() const noexcept override { return flavor_; }
     void exec(std::string_view sql) override { run(sql, nullptr); }
@@ -290,7 +274,10 @@ private:
             Guard& operator=(Guard&&) = delete;
             ~Guard() {
                 AdbcError e{};
-                if (d && s) d->StatementRelease(s, &e);
+                if (d && s) {
+                    d->StatementRelease(s, &e);
+                    if (e.release) e.release(&e);
+                }
             }
         } guard(&driver_, &st);
         const std::string q(sql);
@@ -358,6 +345,34 @@ private:
                 out->rows.push_back(std::move(row));
             }
         }
+    }
+
+    void cleanup() noexcept {
+        AdbcError err{};
+        if (have_conn_) {
+            driver_.ConnectionRelease(&conn_, &err);
+            if (err.release) {
+                err.release(&err);
+                err = AdbcError{};
+            }
+            have_conn_ = false;
+        }
+        if (have_db_) {
+            driver_.DatabaseRelease(&db_, &err);
+            if (err.release) {
+                err.release(&err);
+                err = AdbcError{};
+            }
+            have_db_ = false;
+        }
+        if (lib_) {
+            sysUnloadLibrary(lib_);
+            lib_ = nullptr;
+        }
+        for (void* handle : std::views::reverse(preloadHandles_)) {
+            sysUnloadLibrary(handle);
+        }
+        preloadHandles_.clear();
     }
 
     Flavor flavor_;

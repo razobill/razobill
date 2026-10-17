@@ -271,7 +271,14 @@ def join(template_val: Union[str, bytes], ints: Sequence[int], strs: Sequence[Un
                         "What to do: Verify that {i} and {s} placeholders match provided values. "
                         f"Offending template: '{tmpl_str[:80]}'."
                     )
-                out_parts.append(str(ints[i_idx]))
+                int_val = ints[i_idx]
+                if int_val < 0:
+                    raise ValueError(
+                        "[razobill] What happened: Negative integer slot encountered. "
+                        "Why: Razobill integer slots only support non-negative integers. "
+                        "What to do: Ensure all integer values are non-negative."
+                    )
+                out_parts.append(str(int_val))
                 i_idx += 1
                 p += 3
             # substitute string slot '{s}' with parameter string

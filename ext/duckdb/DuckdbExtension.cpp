@@ -44,6 +44,7 @@ enum class Kind : unsigned char { I64, I32, I16, I8, U64, U32, U16, U8, Str, Int
 // column argument binding handle unpacked from incoming data chunk
 struct Arg {
     Kind kind = Kind::Unsupported;
+    duckdb_type elemType = DUCKDB_TYPE_INVALID;
     void* data = nullptr;
     std::uint64_t* validity = nullptr;
     void* childData = nullptr;
@@ -55,7 +56,7 @@ struct Arg {
 /// out: Kind enum identifying scalar integer, string, or list
 /// own: destroys temporary child logical type handles internally
 /// thread: thread-safe
-inline Kind classify(duckdb_logical_type t) {
+inline Kind classify(duckdb_logical_type t, duckdb_type* outElemType = nullptr) {
     auto id = duckdb_get_type_id(t);
     switch (id) {
     case DUCKDB_TYPE_BIGINT:
@@ -81,13 +82,23 @@ inline Kind classify(duckdb_logical_type t) {
         auto* elem = duckdb_list_type_child_type(t);
         auto elemId = duckdb_get_type_id(elem);
         duckdb_destroy_logical_type(&elem);
-        if (elemId == DUCKDB_TYPE_BIGINT || elemId == DUCKDB_TYPE_INTEGER || elemId == DUCKDB_TYPE_UBIGINT) {
+        if (outElemType) *outElemType = elemId;
+        switch (elemId) {
+        case DUCKDB_TYPE_BIGINT:
+        case DUCKDB_TYPE_INTEGER:
+        case DUCKDB_TYPE_SMALLINT:
+        case DUCKDB_TYPE_TINYINT:
+        case DUCKDB_TYPE_UBIGINT:
+        case DUCKDB_TYPE_UINTEGER:
+        case DUCKDB_TYPE_USMALLINT:
+        case DUCKDB_TYPE_UTINYINT:
             return Kind::IntList;
-        }
-        if (elemId == DUCKDB_TYPE_VARCHAR || elemId == DUCKDB_TYPE_BLOB) {
+        case DUCKDB_TYPE_VARCHAR:
+        case DUCKDB_TYPE_BLOB:
             return Kind::StrList;
+        default:
+            return Kind::Unsupported;
         }
-        return Kind::Unsupported;
     }
     default:
         return Kind::Unsupported;
@@ -300,7 +311,7 @@ void RzJoinImpl(duckdb_function_info info, duckdb_data_chunk in, duckdb_vector o
         auto* vec = duckdb_data_chunk_get_vector(in, c);
         auto* ltype = duckdb_vector_get_column_type(vec);
         auto& a = sc.args[c - 1];
-        a.kind = classify(ltype);
+        a.kind = classify(ltype, &a.elemType);
         duckdb_destroy_logical_type(&ltype);
         a.data = duckdb_vector_get_data(vec);
         a.validity = duckdb_vector_get_validity(vec);
@@ -360,13 +371,44 @@ void RzJoinImpl(duckdb_function_info info, duckdb_data_chunk in, duckdb_vector o
                 break;
             case Kind::IntList: {
                 const auto entry = static_cast<const duckdb_list_entry*>(a.data)[r];
-                const auto* p = static_cast<const std::int64_t*>(a.childData);
                 for (idx_t i = 0; i < entry.length; ++i) {
-                    if (!isValid(a.childValidity, entry.offset + i)) {
+                    const idx_t childIdx = entry.offset + i;
+                    if (!isValid(a.childValidity, childIdx)) {
                         rowHasNullArg = true;
                         break;
                     }
-                    sc.ints.push_back(p[entry.offset + i]);
+                    std::int64_t val = 0;
+                    switch (a.elemType) {
+                    case DUCKDB_TYPE_BIGINT:
+                        val = static_cast<const std::int64_t*>(a.childData)[childIdx];
+                        break;
+                    case DUCKDB_TYPE_INTEGER:
+                        val = static_cast<std::int64_t>(static_cast<const std::int32_t*>(a.childData)[childIdx]);
+                        break;
+                    case DUCKDB_TYPE_SMALLINT:
+                        val = static_cast<std::int64_t>(static_cast<const std::int16_t*>(a.childData)[childIdx]);
+                        break;
+                    case DUCKDB_TYPE_TINYINT:
+                        val = static_cast<std::int64_t>(static_cast<const std::int8_t*>(a.childData)[childIdx]);
+                        break;
+                    case DUCKDB_TYPE_UBIGINT:
+                        val = static_cast<std::int64_t>(static_cast<const std::uint64_t*>(a.childData)[childIdx]);
+                        break;
+                    case DUCKDB_TYPE_UINTEGER:
+                        val = static_cast<std::int64_t>(static_cast<const std::uint32_t*>(a.childData)[childIdx]);
+                        break;
+                    case DUCKDB_TYPE_USMALLINT:
+                        val = static_cast<std::int64_t>(static_cast<const std::uint16_t*>(a.childData)[childIdx]);
+                        break;
+                    case DUCKDB_TYPE_UTINYINT:
+                        val = static_cast<std::int64_t>(static_cast<const std::uint8_t*>(a.childData)[childIdx]);
+                        break;
+                    default:
+                        rowHasNullArg = true;
+                        break;
+                    }
+                    if (rowHasNullArg) break;
+                    sc.ints.push_back(val);
                 }
                 break;
             }
@@ -383,6 +425,7 @@ void RzJoinImpl(duckdb_function_info info, duckdb_data_chunk in, duckdb_vector o
                 break;
             }
             case Kind::Unsupported:
+                rowHasNullArg = true;
                 break;
             }
             if (rowHasNullArg) break;

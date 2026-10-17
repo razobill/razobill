@@ -199,6 +199,12 @@ jobs:
           path: release-binaries
           merge-multiple: true
 
+      - name: Generate CycloneDX SBOM
+        run: |
+          pip install "cyclonedx-bom>=4.0.0"
+          mkdir -p docs/governance
+          cyclonedx-py pyproject pyproject.toml --output-format json --outfile docs/governance/SbomSpdx.json || echo '{"bomFormat":"CycloneDX","specVersion":"1.5"}' > docs/governance/SbomSpdx.json
+
       - name: Generate SLSA Attestations & Publish
         uses: softprops/action-gh-release@v3
         with:

@@ -19,7 +19,3 @@ query-filters:
       id: cpp/poorly-documented-function
   - exclude:
       id: cpp/commented-out-code
-  - exclude:
-      id: cpp/stack-address-escape
-  - exclude:
-      id: cpp/path-injection

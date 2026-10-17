@@ -54,8 +54,11 @@ core::ThreadPool& getThreadPool() {
     static std::once_flag initFork;
     std::call_once(initFork, [] {
 #ifndef _WIN32
-        // ~ resets pool on fork so child workers do not inherit locked mutexes
-        pthread_atfork(nullptr, nullptr, [] { getThreadPoolHolder() = std::make_unique<core::ThreadPool>(); });
+        // ~ resets pool on fork so child workers do not inherit locked mutexes or dead parent thread IDs
+        pthread_atfork(nullptr, nullptr, [] {
+            (void)getThreadPoolHolder().release();
+            getThreadPoolHolder() = std::make_unique<core::ThreadPool>();
+        });
 #endif
     });
     auto& p = getThreadPoolHolder();
@@ -334,6 +337,7 @@ py::object joinOne(const py::object& tmplObj, const py::sequence& intsSeq, const
             Py_ssize_t len = 0;
             PYBIND11_BYTES_AS_STRING_AND_SIZE(item.ptr(), &buf, &len);
             strViews.emplace_back(buf, static_cast<size_t>(len));
+            encodedStrs.push_back(py::reinterpret_borrow<py::object>(item));
         } else if (py::isinstance<py::str>(item)) {
             PyObject* enc = PyUnicode_AsEncodedString(item.ptr(), "utf-8", "surrogateescape");
             if (!enc) throw py::error_already_set();
@@ -382,6 +386,7 @@ py::list splitMany(const py::sequence& inputs, const std::string& modeStr) {
     struct InputItem {
         std::string_view view;
         std::string owned;
+        py::object pyBytes;
         bool isBytes;
     };
 
@@ -397,6 +402,7 @@ py::list splitMany(const py::sequence& inputs, const std::string& modeStr) {
             rawInputs.push_back(InputItem{
                 .view = std::string_view(buf, static_cast<size_t>(len)),
                 .owned = {},
+                .pyBytes = item,
                 .isBytes = true,
             });
         } else if (py::isinstance<py::str>(item)) {
@@ -407,6 +413,7 @@ py::list splitMany(const py::sequence& inputs, const std::string& modeStr) {
             rawInputs.push_back(InputItem{
                 .view = {},
                 .owned = std::move(s),
+                .pyBytes = {},
                 .isBytes = false,
             });
             rawInputs.back().view = rawInputs.back().owned;

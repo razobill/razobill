@@ -242,6 +242,51 @@ class TestPyRazobill(unittest.TestCase):
             for term in banned:
                 self.assertNotIn(term, obj_doc, f"Banned term '{term}' found in docstring of {name}")
 
+    def test_split_many_ephemeral_sequence(self):
+        # verifies that ephemeral Python bytes objects generated on-the-fly
+        # remain valid throughout parallel worker thread execution
+        class EphemeralBytesSequence:
+            def __init__(self, count):
+                self._count = count
+
+            def __len__(self):
+                return self._count
+
+            def __getitem__(self, idx):
+                if idx < 0 or idx >= self._count:
+                    raise IndexError(idx)
+                return f"event-{idx} timestamp={idx} msg=test".encode("utf-8")
+
+        seq = EphemeralBytesSequence(300)
+        results = rz.RzSplitMany(seq)
+        self.assertEqual(len(results), 300)
+        for i, rec in enumerate(results):
+            self.assertEqual(rec.template, b"{s} timestamp={i} msg={s}")
+            self.assertEqual(rec.ints, [i])
+            self.assertEqual(rec.strs, [f"event-{i}".encode("utf-8"), b"test"])
+            self.assertEqual(rz.RzJoin(rec.template, rec.ints, rec.strs), f"event-{i} timestamp={i} msg=test".encode("utf-8"))
+
+    def test_join_ephemeral_bytes_sequence(self):
+        # verifies that ephemeral bytes yielded during join iteration are kept alive
+        # and do not cause use-after-free or memory corruption
+        def ephemeral_gen():
+            yield f"ephemeral-val-{42}".encode("utf-8")
+
+        res = rz.RzJoin("prefix {s} suffix", [], list(ephemeral_gen()))
+        self.assertEqual(res, "prefix ephemeral-val-42 suffix")
+
+        res_bytes = rz.RzJoin(b"prefix {s} suffix", [], list(ephemeral_gen()))
+        self.assertEqual(res_bytes, b"prefix ephemeral-val-42 suffix")
+
+    def test_join_negative_int_rejected(self):
+        # verifies negative integer in slot raises RzError in C++ and fallback
+        with self.assertRaises(rz.RzError):
+            rz.RzJoin("slot {i}", [-1], [])
+        with self.assertRaises(ValueError):
+            _fallback.join("slot {i}", [-1], [])
+
 
 if __name__ == "__main__":
     unittest.main()
+
+

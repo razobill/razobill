@@ -102,7 +102,8 @@ public:
     /// thread: thread-safe, acquires internal mutex
     std::uint64_t compact(const std::string& src);
 
-    /// verify that compact reconstruction view matches source table byte for byte
+    /// verify that compact reconstruction view matches source table byte
+    /// for byte
     /// inv: 0 returned means 100% exact lossless reconstruction
     /// in: src source table name
     /// out: count of mismatched rows (0 on perfect reconstruction)

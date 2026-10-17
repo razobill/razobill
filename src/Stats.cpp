@@ -158,7 +158,7 @@ Ledger ledger(std::span<const Cell> cells, double totalEvents, double confidence
     const double J = entropyOfMap(joint);
 
     // project empirical joint entropy into Fréchet polytope [max(C, E), C + E]
-    // ~ bounds projection stops floating-point imprecision violating non-negativity
+    // ~ bounds projection stops float imprecision violating non-negativity
     const double J_bound = std::max({C, E, std::min(J, C + E)});
     const double Lambda = J_bound - C;
     const double Delta = J_bound - E;

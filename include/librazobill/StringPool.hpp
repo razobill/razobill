@@ -93,7 +93,8 @@ public:
     /// inv: pointers remain stable across intern() due to std::deque paging
     /// in: 32-bit interned string id
     /// out: borrowed string_view, or empty view if id is out of bounds
-    /// own: borrows pool storage; invalidated if concurrent gc() or clear() runs
+    /// own: borrows pool storage; invalidated if concurrent gc() or clear()
+    ///      runs
     /// thread: reads under shared_lock, but lock releases before returning view
     /// err: returns empty string_view on out-of-range id
     [[nodiscard]] std::string_view lookup(std::uint32_t id) const {
@@ -118,7 +119,8 @@ public:
         return {};
     }
 
-    /// thread-safe string accessor copying into destination buffer under read lock
+    /// thread-safe string accessor copying into destination buffer under
+    /// read lock
     /// in: 32-bit interned string id, destination string reference
     /// out: true if found and copied, false if id is out of bounds
     /// own: copies bytes into caller-provided out buffer

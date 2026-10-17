@@ -58,7 +58,8 @@ struct SlotRecord {
     }
 
     /// 64-bit xxHash64 hash of the format template key
-    /// inv: bit-identical with Python pyrazobill, DuckDB RzHash, and ClickHouse xxHash64
+    /// inv: bit-identical with Python pyrazobill, DuckDB RzHash, and
+    ///      ClickHouse xxHash64
     /// out: 64-bit integer hash
     [[nodiscard]] std::uint64_t formKeyHash() const noexcept { return xxh64(formKey()); }
 

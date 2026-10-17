@@ -54,21 +54,24 @@ struct FormKeyEqual {
 };
 } // namespace detail
 
-/// thread-safe concurrent registry of template forms with collision disambiguation
+/// thread-safe concurrent registry of template forms with collision
+/// disambiguation
 class FormCatalog {
 public:
     FormCatalog() = default;
 
     /// registers a form template and returns its 64-bit xxHash64 fingerprint
     /// in: key canonical form key, tmpl template string, numInts, numStrs
-    /// out: 64-bit secondary hash fingerprint (not guaranteed unique under Birthday Bound)
+    /// out: 64-bit secondary hash fingerprint (not guaranteed unique under
+    ///      Birthday Bound)
     /// thread: thread-safe via shared_mutex
     std::uint64_t registerForm(std::string_view key, std::string_view tmpl, std::uint32_t numInts,
                                std::uint32_t numStrs) {
         return registerFormWithHash(key, tmpl, numInts, numStrs, xxh64(key));
     }
 
-    /// registers form with explicit hash parameter for testing collision disambiguation
+    /// registers form with explicit hash parameter for testing collision
+    /// disambiguation
     std::uint64_t registerFormWithHash(std::string_view key, std::string_view tmpl, std::uint32_t numInts,
                                        std::uint32_t numStrs, std::uint64_t explicitHash) {
         (void)registerFormWithHashGetId(key, tmpl, numInts, numStrs, explicitHash);
@@ -76,7 +79,8 @@ public:
     }
 
     /// registers form and returns 1-based dense sequential identifier
-    /// out: unique uint32 dense ID guaranteed distinct even under hash collisions
+    /// out: unique uint32 dense ID guaranteed distinct even under hash
+    ///      collisions
     /// thread: thread-safe via shared_mutex
     std::uint32_t registerFormGetId(std::string_view key, std::string_view tmpl, std::uint32_t numInts,
                                     std::uint32_t numStrs) {
@@ -104,7 +108,8 @@ public:
 
         auto hashIt = hashToKeys_.find(explicitHash);
         if (hashIt != hashToKeys_.end()) {
-            // Hash collision: an existing entry has the same 64-bit hash but a distinct key!
+            // Hash collision: an existing entry has the same 64-bit hash
+            // but a distinct key!
             collisionCount_++;
         }
 
@@ -118,17 +123,18 @@ public:
         entry.intSlots = numInts;
         entry.strSlots = numStrs;
 
-        // Strong exception safety: pre-reserve vector capacities before container mutation (F-CONC-03)
+        // Strong exception safety: pre-reserve vector capacities before
+        // container mutation (F-CONC-03)
         formsById_.reserve(formsById_.size() + 1);
         auto& keyVec = hashToKeys_[explicitHash];
         keyVec.reserve(keyVec.size() + 1);
 
         auto inserted = formsByKey_.emplace(keyStr, std::move(entry));
         keyVec.push_back(keyStr);
-        // ISO C++ [unord.req]: Rehashing an std::unordered_map never invalidates
-        // pointers or references to elements, only iterators. Caching raw pointers
-        // to mapped values in formsById_ is guaranteed stable for the lifetime of
-        // formsByKey_ entries.
+        // ISO C++ [unord.req]: Rehashing an std::unordered_map never
+        // invalidates pointers or references to elements, only iterators.
+        // Caching raw pointers to mapped values in formsById_ is guaranteed
+        // stable for the lifetime of formsByKey_ entries.
         formsById_.push_back(&inserted.first->second);
         return inserted.first->second.id;
     }

@@ -1,23 +1,26 @@
 // =============================================================================
 //  file : include/librazobill/Channel.hpp
 //  role : steganographic and provenance channel over synonymous log forms
-//  inv  : decode(embed(m)) == m or reports clean failure; zero payload corruption
+//  inv  : decode(embed(m)) == m or clean failure; zero payload corruption
 // =============================================================================
 
 // Steganographic and provenance channel over synonymous template choices.
-// Implementation of Theorem 8 (Capacity) and Proposition 9 (Finite-Precision Bound)
-// from "Latitude and Doubt" (M. M. Atta, 2026; see docs/explanation/architecture.md).
+// Implementation of Theorem 8 (Capacity) and Proposition 9
+// (Finite-Precision Bound) from "Latitude and Doubt" (M. M. Atta, 2026;
+// see docs/explanation/architecture.md).
 //
-// In an unambiguous semantic source (Delta = 0), Latitude Lambda = H(X | W) operates
-// as an information channel: the exact number of bits per symbol that can be embedded
-// into form selection without altering the underlying meaning or token statistics.
+// In an unambiguous semantic source (Delta = 0), Latitude Lambda = H(X | W)
+// operates as an information channel: the exact number of bits per symbol
+// that can be embedded into form selection without altering the underlying
+// meaning or token statistics.
 //
 // OPERATIONAL REGIME & IMPLEMENTATION LIMITS:
-// Implements an arithmetic cumulative interval prototype over IEEE 754 64-bit float
-// (53 bits of mantissa). Proposition 9 proves distortion-free decoding across long
-// sequences requires precision P = ceil(sum_i max_x (-log2 Q(x | w_i))) + s + 1 bits.
-// When P exceeds mantissa precision, interval arithmetic underflow is safely caught,
-// returning success = false rather than producing corrupted data.
+// Implements an arithmetic cumulative interval prototype over IEEE 754 64-bit
+// float (53 bits of mantissa). Proposition 9 proves distortion-free decoding
+// across long sequences requires precision
+// P = ceil(sum_i max_x (-log2 Q(x | w_i))) + s + 1 bits.
+// When P exceeds mantissa precision, interval arithmetic underflow is safely
+// caught, returning success = false rather than producing corrupted data.
 
 #pragma once
 
@@ -76,29 +79,34 @@ struct DecodeResult {
 /// thread: pure, reentrant, noexcept
 [[nodiscard]] std::size_t requiredKeyBits(std::span<const MeaningChoice> sequence, std::size_t s = 64) noexcept;
 
-/// calculates Chebyshev upper bound on failure probability for given payload and safety margin
+/// calculates Chebyshev upper bound on failure probability for given
+/// payload and safety margin
 /// in: capacity metrics, payloadBits, security margin s
 /// out: failure probability bound delta
 /// thread: pure, reentrant, noexcept
 [[nodiscard]] double failureProbabilityBound(const ChannelCapacity& capacity, std::size_t payloadBits,
                                              double s = 64.0) noexcept;
 
-/// calculates exact failure probability via distribution convolution across positions
+/// calculates exact failure probability via distribution convolution
+/// across positions
 /// in: sequence strata, payloadBits
 /// out: exact analytical failure probability
 /// thread: pure, reentrant, noexcept
 [[nodiscard]] double exactFailureProbability(std::span<const MeaningChoice> sequence, std::size_t payloadBits) noexcept;
 
-/// embeds integer message into synonymous form selections via shared key interval arithmetic
+/// embeds integer message into synonymous form selections via shared key
+/// interval arithmetic
 /// inv: preserves underlying token probability distribution exactly
-/// in: sequence strata, message integer, payloadBits <= 64, sharedKey in [0.0, 1.0), dither
+/// in: sequence strata, message integer, payloadBits <= 64,
+///     sharedKey in [0.0, 1.0), dither
 /// out: EmbedResult containing chosen form indices
 /// err: returns success = false if interval precision is insufficient
 [[nodiscard]] EmbedResult embed(std::span<const MeaningChoice> sequence, std::uint64_t message, std::size_t payloadBits,
                                 double sharedKey, double dither = 0.5);
 
 /// extracts embedded message from observed synonymous form sequence
-/// inv: exact message restoration on success; returns success = false on boundary crossing
+/// inv: exact message restoration on success; returns success = false on
+///      boundary crossing
 /// in: sequence strata, observedForms indices, payloadBits, sharedKey
 /// out: DecodeResult with decoded integer payload
 /// err: returns success = false on ambiguity; never returns corrupted message

@@ -60,7 +60,7 @@ public:
         return "regexp_matches(" + std::string(h) + ", " + std::string(p) + ")";
     }
 
-    /// generates extension call RzTemplate(col) for vectorized template extraction
+    /// generates call RzTemplate(col) for vectorized template extraction
     std::string formExpr(std::string_view col, core::ScanMode /*mode*/ = core::ScanMode::Semantic) const override {
         return "RzTemplate(" + std::string(col) + ")";
     }
@@ -70,8 +70,8 @@ public:
 
     std::string templateExpr(std::string_view f) const override { return std::string(f); }
 
-    // uses DELETE FROM because DuckDB TRUNCATE semantics vary across table types
-    // ~ delete from because truncate was historically restricted on attached dbs
+    // uses DELETE FROM because DuckDB TRUNCATE varies across table types
+    // ~ delete from because truncate was restricted on attached databases
     std::string truncate(std::string_view t) const override { return "DELETE FROM " + std::string(t); }
 };
 
@@ -119,8 +119,8 @@ public:
         return "match(" + std::string(h) + ", " + std::string(p) + ")";
     }
 
-    /// builds pure-SQL regex expression pipeline to extract templates in ClickHouse
-    /// ~ pure sql regex pipeline because running custom c++ functions in chdb is an adventure
+    /// builds pure-SQL regex pipeline to extract templates in ClickHouse
+    // ~ pure sql regex because running custom c++ in chdb is an adventure
     std::string formExpr(std::string_view col, core::ScanMode /*mode*/ = core::ScanMode::Semantic) const override {
         const std::string c(col);
         const std::string tok = quote(kTokenRegex);
@@ -135,7 +135,7 @@ public:
     }
 
     /// maps to native xxHash64 built-in function
-    /// inv: xxHash64 matches RzHash bit-for-bit (pinned in tests/IntegrationChdb.cpp)
+    /// inv: xxHash64 matches RzHash bit-for-bit (tests/IntegrationChdb.cpp)
     std::string hashExpr(std::string_view t) const override { return "xxHash64(" + std::string(t) + ")"; }
 
     std::string templateExpr(std::string_view f) const override {

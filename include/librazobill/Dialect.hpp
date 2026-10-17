@@ -133,7 +133,8 @@ public:
 
     /// dialect-specific sql statement truncating table data
     /// in: table name
-    /// out: "DELETE FROM <table>" (DuckDB) or "TRUNCATE TABLE <table>" (ClickHouse)
+    /// out: "DELETE FROM <table>" (DuckDB) or
+    ///      "TRUNCATE TABLE <table>" (ClickHouse)
     /// own: returns owned std::string
     /// thread: thread-safe, const
     [[nodiscard]] virtual std::string truncate(std::string_view table) const = 0;

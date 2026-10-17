@@ -5,44 +5,53 @@
 //  deps : <stdint.h>, <stddef.h>
 // =============================================================================
 
-// High-performance, zero-allocation log decomposition and byte-exact reconstruction.
+// High-performance, zero-allocation log decomposition and byte-exact
+// reconstruction.
 //
 // DATA MODEL:
 // Every log line x decomposes into three relational components:
-// 1. Template (T): constant character skeleton containing {i} for 64-bit integer
-//    slots and {s} for string variable slots. Literal braces are escaped as {{ and }}.
-// 2. Integers (I): array of 64-bit non-negative integers extracted from decimal tokens.
-// 3. Strings (S): array of variable string slices borrowed from the input byte stream.
+// 1. Template (T): constant character skeleton containing {i} for 64-bit
+//    integer variables and {s} for string variable positions. Literal braces
+//    are escaped as {{ and }}.
+// 2. Integers (I): array of 64-bit non-negative integers extracted from
+//    decimal tokens.
+// 3. Strings (S): array of variable string slices borrowed from the input byte
+//    stream.
 //
 // THE IRON LAW:
-// RzJoin(RzSplit(x)) == x holds for every byte string x, including invalid UTF-8,
-// embedded NUL bytes, binary payloads, and whitespace-only lines.
+// RzJoin(RzSplit(x)) == x holds for every byte string x, including invalid
+// UTF-8, embedded NUL bytes, binary payloads, and whitespace-only lines.
 //
 // SCANNING MODES:
 // At the C ABI layer, RzSplit invokes the semantic scanner:
-// - Decimal tokens without leading zeros (except single "0") become {i} slots.
+// - Decimal tokens without leading zeros (except single "0") become {i}
+//   positions.
 // - Tokens following contextual keywords (for, from, user, port) or enclosed
-//   in single or double quotes become {s} slots.
+//   in single or double quotes become {s} positions.
 // - Literal braces in message text are escaped to {{ and }} in the template.
 //
 // MEMORY OWNERSHIP AND LIFETIMES:
-// - Borrowed string views: pointers in outRecord->strValues point directly into the
-//   caller's input message buffer. The input buffer must outlive outRecord.
-// - Heap allocation: RzSplit allocates internal buffers (templateStr, intValues,
-//   strValues, strLengths). The caller must release them via RzFree(outRecord).
-// - Reconstruction buffers: RzJoin and RzTemplate write into a caller-supplied buffer
-//   (outBuffer) without appending a trailing NUL byte. If bufferCapacity is insufficient,
-//   RZ_ERR_BUFFER_TOO_SMALL is returned and *outLength receives the required size.
-// - Manual records: foreign language runtimes (Go, Rust, Python ctypes) may allocate
-//   an RzRecord with internalHandle = NULL and populate it directly for RzJoin.
+// - Borrowed string views: pointers in outRecord->strValues point directly into
+//   the caller's input message buffer. The input buffer must outlive outRecord.
+// - Heap allocation: RzSplit allocates internal buffers (templateStr,
+//   intValues, strValues, strLengths). The caller must release them via
+//   RzFree(outRecord).
+// - Reconstruction buffers: RzJoin and RzTemplate write into a caller-supplied
+//   buffer (outBuffer) without appending a trailing NUL byte. If bufferCapacity
+//   is insufficient, RZ_ERR_BUFFER_TOO_SMALL is returned and *outLength
+//   receives the required size.
+// - Manual records: foreign language runtimes (Go, Rust, Python ctypes) may
+//   allocate an RzRecord with internalHandle = NULL and populate it directly
+//   for RzJoin.
 //
 // CONCURRENCY & THREAD SAFETY:
-// All functions are reentrant and stateless. Concurrent calls operating on distinct
-// record and buffer instances require no synchronization.
+// All functions are reentrant and stateless. Concurrent calls operating on
+// distinct record and buffer instances require no synchronization.
 //
 // ABI STABILITY:
-// C99 calling convention and frozen struct member order governed by RZ_ABI_VERSION.
-// All C++ exceptions are intercepted at the ABI boundary and converted to RzStatus codes.
+// C99 calling convention and frozen struct member order governed by
+// RZ_ABI_VERSION. All C++ exceptions are intercepted at the ABI boundary
+// and converted to RzStatus codes.
 #ifndef LIBRAZOBILL_CAPI_H
 #define LIBRAZOBILL_CAPI_H
 
@@ -81,7 +90,8 @@ typedef enum RzStatus {
 
 /// container representing a decomposed log message
 /// inv: template placeholders {i} count == intCount and {s} count == strCount
-/// own: strValues pointers borrow from caller message; heap arrays freed by RzFree
+/// own: strValues pointers borrow from caller message; heap arrays freed
+///      by RzFree
 typedef struct RzRecord {
     const char* templateStr;
     size_t templateLength;
@@ -94,16 +104,18 @@ typedef struct RzRecord {
 } RzRecord;
 
 /**
- * Splits a log message into a template string, 64-bit integers, and variable string slices.
+ * Splits a log message into a template string, 64-bit integers, and
+ * variable string slices.
  *
  * inv: RzJoin(outRecord, ...) restores original bytes exactly
  * in: message points to messageLength bytes; does not require NUL termination
  * out: outRecord fields populated on RZ_OK
- * own: outRecord borrows string slices from message; caller must free via RzFree
+ * own: outRecord borrows string slices from message; caller must free via
+ *      RzFree
  * thread: reentrant, safe across concurrent threads with separate records
  * err: returns RzStatus; on error outRecord is zeroed and no memory leaks
  *
- * @param message Pointer to the input message bytes (does not require NUL termination).
+ * @param message Pointer to the input message bytes (no NUL needed).
  * @param messageLength Length of the message in bytes.
  * @param outRecord Output record struct populated on success.
  * @return RZ_OK on success, or an error status code.
@@ -115,33 +127,40 @@ RZ_API RzStatus RzSplit(const char* message, size_t messageLength, RzRecord* out
  *
  * inv: byte-for-byte exact restoration of original input
  * in: record points to valid RzRecord with matching variable counts
- * out: outBuffer receives reconstructed bytes up to bufferCapacity; outLength receives written or required length
+ * out: outBuffer receives reconstructed bytes up to bufferCapacity;
+ *      outLength receives written or required length
  * own: writes into caller-owned outBuffer; no internal allocations
  * thread: reentrant, safe across concurrent threads with distinct buffers
  * err: returns RZ_ERR_BUFFER_TOO_SMALL if bufferCapacity < required
  *
  * @param record Pointer to the record to join.
- * @param outBuffer Target buffer to receive the reconstructed bytes (may be NULL if probing capacity).
+ * @param outBuffer Target buffer to receive the reconstructed bytes
+ *                  (may be NULL if probing capacity).
  * @param bufferCapacity Capacity of outBuffer in bytes.
- * @param outLength Pointer to receive the actual written or required length in bytes (may be NULL).
+ * @param outLength Pointer to receive actual written or required
+ *                  length in bytes (may be NULL).
  * @return RZ_OK on success, or an error status code.
  */
 RZ_API RzStatus RzJoin(const RzRecord* record, char* outBuffer, size_t bufferCapacity, size_t* outLength);
 
 /**
- * Extracts only the template representation of a message without allocating parsed arrays.
+ * Extracts only the template representation of a message without allocating
+ * parsed arrays.
  *
  * in: message points to messageLength bytes
- * out: outBuffer receives template skeleton; outLength receives written or needed bytes
+ * out: outBuffer receives template skeleton; outLength receives written
+ *      or needed bytes
  * own: writes into caller-owned outBuffer; zero heap allocation
  * thread: reentrant
  * err: returns RZ_ERR_BUFFER_TOO_SMALL if bufferCapacity is insufficient
  *
  * @param message Pointer to the input message bytes.
  * @param messageLength Length of the message in bytes.
- * @param outBuffer Target buffer to receive the template (may be NULL if probing capacity).
+ * @param outBuffer Target buffer to receive template (may be NULL if
+ *                  probing capacity).
  * @param bufferCapacity Capacity of outBuffer in bytes.
- * @param outLength Pointer to receive the actual written or required length in bytes (may be NULL).
+ * @param outLength Pointer to receive actual written or required
+ *                  length in bytes (may be NULL).
  * @return RZ_OK on success, or an error status code.
  */
 RZ_API RzStatus RzTemplate(const char* message, size_t messageLength, char* outBuffer, size_t bufferCapacity,
@@ -153,7 +172,8 @@ RZ_API RzStatus RzTemplate(const char* message, size_t messageLength, char* outB
  *
  * in: record may be NULL or pointer to RzRecord
  * out: record fields reset to NULL and 0
- * own: frees memory tracked by internalHandle; does not touch caller input message
+ * own: frees memory tracked by internalHandle; does not touch caller
+ *      input message
  * thread: safe on distinct records
  * err: noexcept, no error return
  */
@@ -181,7 +201,7 @@ RZ_API const char* RzVersion(void);
 /**
  * Returns the runtime library ABI version (e.g. 1).
  *
- * out: integer ABI version (currently 1)
+ * out: integer ABI version (e.g. 1)
  * thread: reentrant
  */
 RZ_API int RzAbiVersion(void);

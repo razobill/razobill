@@ -302,7 +302,8 @@ DecodeResult decode(std::span<const MeaningChoice> sequence, std::span<const std
         return res;
     }
 
-    // Unshift key around interval center: arc A = [centerZ - q/2, centerZ + q/2]
+    // Unshift key around interval center: arc A = [centerZ - q/2,
+    // centerZ + q/2]
     const double center = (curL + curR) * 0.5;
     double centerZ = center - sharedKey;
     centerZ = centerZ - std::floor(centerZ); // canonical in [0, 1)
@@ -312,7 +313,7 @@ DecodeResult decode(std::span<const MeaningChoice> sequence, std::span<const std
     const double rightZ = centerZ + halfQ;
 
     // Handle circular modular interval wrap-around on S^1 = [0, 1) modulo 1
-    // ~ modular arithmetic on a circle requires checking cell boundaries at 0 and 1
+    // ~ modular arithmetic on a circle requires checking cell boundaries
     const double effectiveLeft = (leftZ < 0.0 && leftZ >= -1e-12) ? 0.0 : leftZ;
     const double effectiveRight = (rightZ >= 1.0 && rightZ <= 1.0 + 1e-12) ? std::nextafter(1.0, 0.0) : rightZ;
 

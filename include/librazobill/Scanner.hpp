@@ -122,7 +122,8 @@ template <class OnToken>
             if (mode == ScanMode::Semantic && (*p == '"' || *p == '\'')) {
                 const unsigned char quote = *p;
                 if ((quote == '"' && p < unclosedDoubleQuoteEnd) || (quote == '\'' && p < unclosedSingleQuoteEnd)) {
-                    // Suffix confirmed to have no matching unescaped closing quote
+                    // Suffix confirmed to have no matching unescaped closing
+                    // quote
                     all |= detail::kClass[*p];
                     ++p;
                     continue;

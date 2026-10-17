@@ -6,12 +6,14 @@
 
 // Standalone xxHash64 implementation with seed 0.
 // Bit-identical to ClickHouse xxHash64() and pyrazobill RzHash.
-// Parity pinned by tests/IntegrationChdb.cpp and lib/python/tests/TestPyRazobill.py.
+// Parity pinned by tests/IntegrationChdb.cpp and
+// lib/python/tests/TestPyRazobill.py.
 //
 // DESIGN RATIONALE:
-// Form hashes serve as distributed partition keys across C++, DuckDB, and ClickHouse.
-// Standardizing on Yann Collet's xxHash64 specification with seed 0 guarantees that
-// hash values computed on ingest match database indexes without translation.
+// Form hashes serve as distributed partition keys across C++, DuckDB,
+// and ClickHouse. Standardizing on Yann Collet's xxHash64 specification with
+// seed 0 guarantees that hash values computed on ingest match database indexes
+// without translation.
 
 #pragma once
 
@@ -24,19 +26,22 @@
 namespace razobill::core {
 
 /// computes 64-bit xxHash64 with seed 0 over a byte slice
-/// inv: bit-identical to ClickHouse xxHash64() and Python RzHash; pinned by tests/IntegrationChdb.cpp
+/// inv: bit-identical to ClickHouse xxHash64() and Python RzHash;
+///      pinned by tests/IntegrationChdb.cpp
 /// in: s is arbitrary byte view, valid or invalid UTF-8
 /// out: 64-bit unsigned hash integer
 /// thread: pure, reentrant, noexcept
 [[nodiscard]] inline std::uint64_t xxh64(std::string_view s) noexcept {
-    // prime constants derived from golden ratio expansion for maximum bit diffusion
+    // prime constants derived from golden ratio expansion for maximum bit
+    // diffusion
     constexpr std::uint64_t P1 = 11400714785074694791ULL; // 0x9E3779B185EBCA87
     constexpr std::uint64_t P2 = 14029467366897019727ULL; // 0xC2B2AE3D27D4EB4F
     constexpr std::uint64_t P3 = 1609587929392839161ULL;  // 0x165667B19E3779F9
     constexpr std::uint64_t P4 = 9650029242287828579ULL;  // 0x85EBCA77C2B2AE63
     constexpr std::uint64_t P5 = 2870177450012600261ULL;  // 0x27D4EB2F165667C5
 
-    // std::memcpy handles unaligned memory accesses cleanly without undefined behavior
+    // std::memcpy handles unaligned memory accesses cleanly without
+    // undefined behavior
     auto rd64 = [](const char* p) noexcept -> std::uint64_t {
         std::uint64_t v = 0;
         std::memcpy(&v, p, 8);
@@ -71,7 +76,8 @@ namespace razobill::core {
     std::uint64_t h = 0;
 
     // Fast 32-byte 4-lane parallel processing loop.
-    // Breaks data into 4 independent accumulators (v1..v4) to saturate CPU instruction-level parallelism (ILP).
+    // Breaks data into 4 independent accumulators (v1..v4) to saturate CPU
+    // instruction-level parallelism (ILP).
     if (s.size() >= 32) [[likely]] {
         std::uint64_t v1 = P1 + P2;
         std::uint64_t v2 = P2;
@@ -85,7 +91,8 @@ namespace razobill::core {
             p += 32;
         }
 
-        // Convergence: mix the 4 parallel accumulators into a single 64-bit state
+        // Convergence: mix the 4 parallel accumulators into a single
+        // 64-bit state
         h = std::rotl(v1, 1) + std::rotl(v2, 7) + std::rotl(v3, 12) + std::rotl(v4, 18);
         h = merge(h, v1);
         h = merge(h, v2);
@@ -113,7 +120,8 @@ namespace razobill::core {
     }
 
     // Final Avalanche Mixer: Bit shifts and prime multiplies guarantee that
-    // flipping even 1 single bit in the input string flips ~50% of the bits in the output hash.
+    // flipping even 1 single bit in the input string flips ~50% of the bits
+    // in the output hash.
     h ^= h >> 33;
     h *= P2;
     h ^= h >> 29;

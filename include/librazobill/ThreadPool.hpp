@@ -47,7 +47,8 @@ public:
                         try {
                             task();
                         } catch (...) {
-                            // Suppress task exceptions to prevent std::terminate on worker thread
+                            // Suppress task exceptions to prevent
+                            // std::terminate on worker thread
                         }
                     }
                 });
@@ -123,8 +124,10 @@ public:
     }
 
     /// execute chunked parallel iteration over range [0..total)
-    /// inv: chunking amortizes mutex acquisition; runs single-threaded if total <= chunkSize
-    /// in: total item count, chunkSize (0 auto-computes even partition), fn(start, end)
+    /// inv: chunking amortizes mutex acquisition; runs single-threaded if
+    ///      total <= chunkSize
+    /// in: total item count, chunkSize (0 auto-computes even partition),
+    ///     fn(start, end)
     /// thread: blocks caller until all chunks complete; chunks run concurrently
     /// err: captures chunk exceptions and rethrows the first caught exception
     template <typename F> void parallelFor(std::size_t total, std::size_t chunkSize, F&& fn) {

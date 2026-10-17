@@ -1,6 +1,6 @@
 // =============================================================================
 //  file : include/librazobill/Status.hpp
-//  role : zero-allocation status codes and error descriptions for the data plane
+//  role : zero-allocation status codes and error descriptions for data plane
 //  inv  : Status fits in an 8-bit unsigned char register; never throws
 // =============================================================================
 

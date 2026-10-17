@@ -123,7 +123,8 @@ struct PriceOfSaying {
     double lowerBoundBits = 0.0;            // n * (E + Delta)
     double upperBoundBits = 0.0;            // n * (E + Delta) + 2
 
-    /// verify price-of-saying conservation identities within numerical tolerance
+    /// verify price-of-saying conservation identities within numerical
+    /// tolerance
     /// out: true if total transmission matches both dual formulations
     /// thread: pure const query, noexcept
     [[nodiscard]] bool satisfiesIdentity(double tol = 1e-9) const noexcept {
@@ -160,7 +161,8 @@ struct DepthLedger {
     double coarsestRelevance = 0.0;      // I(W_L; Y)
 
     /// verify telescopic identities across hierarchical levels
-    /// out: true if total entropy and relevance equal sum of steps plus coarsest
+    /// out: true if total entropy and relevance equal sum of steps plus
+    ///      coarsest
     /// thread: pure const query, noexcept
     [[nodiscard]] bool satisfiesIdentity(double tol = 1e-9) const noexcept {
         double sumH = coarsestEntropy;

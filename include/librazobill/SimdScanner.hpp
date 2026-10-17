@@ -65,7 +65,8 @@ enum class SimdArchitecture : std::uint8_t { Scalar = 0, Neon = 1, Avx2 = 2, Avx
     const bool osxsave = (cpuInfo[2] & (1 << 27)) != 0;
     if (!osxsave) return SimdArchitecture::Scalar;
 
-    // Check if OS has enabled YMM state saving in XCR0 (bits 1 and 2: XMM and YMM)
+    // Check if OS has enabled YMM state saving in XCR0 (bits 1 and 2:
+    // XMM and YMM)
     const unsigned long long xcr0 = _xgetbv(0);
     const bool ymmSupported = (xcr0 & 0x6) == 0x6;
     if (!ymmSupported) return SimdArchitecture::Scalar;
@@ -75,7 +76,8 @@ enum class SimdArchitecture : std::uint8_t { Scalar = 0, Neon = 1, Avx2 = 2, Avx
         const bool avx2 = (cpuInfo[1] & (1 << 5)) != 0;
         const bool avx512f = (cpuInfo[1] & (1 << 16)) != 0;
         const bool avx512bw = (cpuInfo[1] & (1 << 30)) != 0;
-        // For AVX-512, check XCR0 bits 5, 6, 7 (opmask, ZMM_Hi256, Hi16_ZMM) -> mask 0xE6
+        // For AVX-512, check XCR0 bits 5, 6, 7 (opmask, ZMM_Hi256, Hi16_ZMM)
+        // -> mask 0xE6
         const bool zmmSupported = (xcr0 & 0xE6) == 0xE6;
         if (zmmSupported && avx512f && avx512bw) return SimdArchitecture::Avx512;
         if (avx2) return SimdArchitecture::Avx2;

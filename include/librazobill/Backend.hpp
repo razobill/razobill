@@ -6,8 +6,8 @@
 
 // Database control plane abstraction.
 // Decouples schema compaction, catalog management, and information entropy
-// audits from the underlying analytical database engine (DuckDB, ClickHouse chDB)
-// using Arrow Database Connectivity (ADBC).
+// audits from the underlying analytical database engine (DuckDB, ClickHouse
+// chDB) using Arrow Database Connectivity (ADBC).
 
 #pragma once
 
@@ -29,7 +29,8 @@ struct BackendError : std::runtime_error {
 /// supported database dialects for SQL generation and type mapping
 enum class Flavor { DuckDB, ClickHouse };
 
-/// relational column value variant supporting null, integers, floats, and strings
+/// relational column value variant supporting null, integers, floats,
+/// and strings
 using Value = std::variant<std::monostate, std::int64_t, std::uint64_t, double, std::string>;
 
 /// tabular in-memory representation of database query results

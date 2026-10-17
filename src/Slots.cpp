@@ -48,7 +48,7 @@ constexpr std::size_t digits10(std::int64_t v) noexcept {
 
 /// detects whether form string uses legacy skeleton and type suffix encoding
 /// in: form is raw form key representation
-/// out: true if legacy wire format (placeholder byte 0x11 and type separator 0x12)
+/// out: true if legacy wire format (placeholder 0x11 and type separator 0x12)
 bool isLegacyFormKey(std::string_view form) noexcept {
     if (form.find("{i}") != std::string_view::npos || form.find("{s}") != std::string_view::npos ||
         form.find("{{") != std::string_view::npos || form.find("}}") != std::string_view::npos) {
@@ -100,7 +100,7 @@ Status splitKey(std::string_view form, std::string_view& skeleton, std::string_v
 /// inv: exact byte restoration under legacy 0x11/0x12 wire format
 /// in: form, ints, strs
 /// out: out buffer receives reconstructed message
-/// err: returns Status::SlotUnderflow, Status::SlotOverflow, or Status::Malformed
+/// err: returns Status::SlotUnderflow, SlotOverflow, or Malformed
 Status reconstructLegacy(std::string_view form, std::span<const std::int64_t> ints,
                          std::span<const std::string_view> strs, std::string& out) {
     std::string_view skeleton;
@@ -149,14 +149,14 @@ Status reconstructLegacy(std::string_view form, std::span<const std::int64_t> in
 
 /// two-pass message reconstruction from template and typed slot vectors
 /// inv: byte-for-byte exact restoration of original input
-/// in: tmpl with {i} and {s} placeholders; ints non-negative 64-bit values; strs views
+/// in: tmpl with {i} and {s} slots; ints 64-bit values; strs string views
 /// out: out string populated with reconstructed payload
 /// own: out buffer allocated once to exact size; ints and strs borrowed
 /// thread: reentrant, zero shared state
-/// err: returns Status::SlotUnderflow, Status::SlotOverflow, Status::TooLarge, Status::Malformed
+/// err: returns Status::SlotUnderflow, SlotOverflow, TooLarge, Malformed
 Status reconstructNew(std::string_view tmpl, std::span<const std::int64_t> ints, std::span<const std::string_view> strs,
                       std::string& out) {
-    // two-pass sizing prevents reallocations and verifies slot counts before writing
+    // two-pass sizing prevents reallocations and verifies slot counts
     // ~ measuring twice and allocating once keeps the hot path allocator-free
     const char* p = tmpl.data();
     const char* const end = p + tmpl.size();
@@ -258,7 +258,7 @@ Status reconstructNew(std::string_view tmpl, std::span<const std::int64_t> ints,
 
 // -- slot parsing and template extraction -------------------------------------
 
-/// scans raw log message and extracts template skeleton, 64-bit integers, and strings
+/// scans raw log message and extracts template, 64-bit integers, and strings
 /// inv: join(split(msg)) == msg for all valid messages
 /// in: msg byte view, mode ScanMode::DigitOnly or ScanMode::Semantic
 /// out: out populated with templateStr, ints, and string slices
@@ -285,7 +285,7 @@ Status parse(std::string_view msg, SlotRecord& out, ScanMode mode) {
                 else
                     out.templateStr.push_back(c);
             }
-            // numbers with leading zeros (e.g. "007") stay strings to prevent byte loss
+            // leading zeros (e.g. "007") stay strings to prevent byte loss
             if (isIntToken(tok)) {
                 std::int64_t v = 0;
                 std::from_chars(tok.data(), tok.data() + tok.size(), v);

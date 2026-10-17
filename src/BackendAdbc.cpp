@@ -153,9 +153,9 @@ Value decode(const char* fmt, const ArrowArray* a, std::int64_t i) {
             throw BackendError(std::string("malformed decimal format string: ") + fmt);
         }
         if (bits != 128) throw BackendError(std::string("unsupported decimal width: ") + fmt);
-        if (!a || a->n_buffers < 2 || !a->buffers[1]) return 0.0;
-        // converts 128-bit fixed-point arrow decimal into double with 2^64 scaling
-        // ~ manual 2^64 arithmetic because c++20 lacks standard int128_t across all compilers
+        // converts 128-bit fixed-point arrow decimal into double with 2^64
+        // scaling
+        // ~ manual 2^64 arithmetic because c++ lacks standard int128_t
         const auto* w = static_cast<const std::uint64_t*>(a->buffers[1]) + (2 * (i + a->offset));
         const auto hi = static_cast<std::int64_t>(w[1]);
         double v = 0.0;
@@ -272,7 +272,7 @@ public:
     }
 
 private:
-    /// execute SQL statement and optionally decode output Arrow batches into Table
+    /// execute SQL statement and decode output Arrow batches into Table
     void run(std::string_view sql, Table* out) {
         std::scoped_lock lock(connMutex_);
         AdbcError err{};

@@ -64,10 +64,12 @@ public:
     }
 
     /// bump allocate memory aligned to alignment boundary
-    /// inv: O(1) pointer advance on fast path; amortized zero allocation on reset
+    /// inv: O(1) pointer advance on fast path; amortized zero allocation
+    ///      on reset
     /// in: bytes allocation size, alignment power of two (default 8 bytes)
     /// out: non-null aligned pointer; nullptr if bytes == 0
-    /// own: memory owned by arena; lifetime tied to arena until reset() or clear()
+    /// own: memory owned by arena; lifetime tied to arena until reset()
+    ///      or clear()
     /// thread: not thread-safe; single-threaded or thread-confined per worker
     /// err: throws std::bad_alloc on OS allocation failure or size overflow
     [[nodiscard]] void* allocate(std::size_t bytes, std::size_t alignment = 8) {

@@ -18,6 +18,7 @@ import uuid
 # thread-safe in-memory storage tracking buckets, keys, and multipart state
 class MockS3Storage:
     """Thread-safe in-memory object store for mock S3 buckets and multipart state."""
+
     def __init__(self):
         self.lock = threading.Lock()
         self.buckets = {"telemetry": {}, "test-bucket": {}}

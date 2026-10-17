@@ -49,11 +49,7 @@ def isRealAwsEnvironment() -> bool:
     out: True if real AWS credentials or runtime metadata detected
     """
     endpoint = os.environ.get("AWS_ENDPOINT_URL", "").lower()
-    if endpoint and (
-        "localhost" in endpoint
-        or "127.0.0.1" in endpoint
-        or "localstack" in endpoint
-    ):
+    if endpoint and ("localhost" in endpoint or "127.0.0.1" in endpoint or "localstack" in endpoint):
         return False
 
     # check for AWS compute runtime indicators
@@ -69,11 +65,7 @@ def isRealAwsEnvironment() -> bool:
 
     # check if real AWS credentials exist without local emulator override
     access_key = os.environ.get("AWS_ACCESS_KEY_ID", "")
-    if (
-        access_key
-        and access_key not in ("test", "mock", "minioadmin")
-        and not endpoint
-    ):
+    if access_key and access_key not in ("test", "mock", "minioadmin") and not endpoint:
         return True
 
     return False

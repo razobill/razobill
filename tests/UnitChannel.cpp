@@ -52,8 +52,8 @@ TEST_CASE("Channel embed and decode lossless message recovery") {
     for (std::uint32_t i = 0; i < 16; ++i) {
         MeaningChoice choice;
         choice.meaning = i;
-        choice.options = {SynonymousOption{0, 0.25}, SynonymousOption{1, 0.25},
-                          SynonymousOption{2, 0.25}, SynonymousOption{3, 0.25}};
+        choice.options = {SynonymousOption{0, 0.25}, SynonymousOption{1, 0.25}, SynonymousOption{2, 0.25},
+                          SynonymousOption{3, 0.25}};
         sequence.push_back(std::move(choice));
     }
 

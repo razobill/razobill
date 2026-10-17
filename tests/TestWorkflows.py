@@ -82,10 +82,7 @@ class TestWorkflowActions(unittest.TestCase):
     def action_step(self, workflow, job_id, action):
         """extract unique step matching target action prefix in specified job"""
         steps = self.workflows[workflow]["jobs"][job_id]["steps"]
-        matches = [
-            step for step in steps
-            if step.get("uses", "").split("@")[0] == action
-        ]
+        matches = [step for step in steps if step.get("uses", "").split("@")[0] == action]
         self.assertEqual(
             len(matches),
             1,
@@ -110,9 +107,7 @@ class TestWorkflowActions(unittest.TestCase):
                 for dimension, value in zip(matrix, values):
                     placeholder = "${{ matrix." + dimension + " }}"
                     name = name.replace(placeholder, value)
-                self.assertNotIn(
-                    "${{", name, f"Unresolved artifact name in {job_id}"
-                )
+                self.assertNotIn("${{", name, f"Unresolved artifact name in {job_id}")
                 artifacts.append((name, job_id))
         return artifacts
 
@@ -125,9 +120,7 @@ class TestWorkflowActions(unittest.TestCase):
                 for step in job["steps"]:
                     action, _, version = step.get("uses", "").partition("@")
                     if action in ACTION_VERSIONS:
-                        with self.subTest(
-                            workflow=name, job=job_id, action=action
-                        ):
+                        with self.subTest(workflow=name, job=job_id, action=action):
                             self.assertEqual(version, ACTION_VERSIONS[action])
                         seen.add(action)
             # ensures expected actions are actually present in workflow
@@ -142,15 +135,11 @@ class TestWorkflowActions(unittest.TestCase):
             for job_id, job in workflow["jobs"].items():
                 with self.subTest(workflow=name, job=job_id):
                     # verifies checkout is the first operational step in job
-                    checkout = self.action_step(
-                        name, job_id, "actions/checkout"
-                    )
+                    checkout = self.action_step(name, job_id, "actions/checkout")
                     self.assertIs(job["steps"][0], checkout)
                     # checks allow-unsafe-pr-checkout is not enabled
                     self.assertNotEqual(
-                        checkout.get("with", {}).get(
-                            "allow-unsafe-pr-checkout", "false"
-                        ),
+                        checkout.get("with", {}).get("allow-unsafe-pr-checkout", "false"),
                         "true",
                     )
 
@@ -190,9 +179,7 @@ class TestWorkflowActions(unittest.TestCase):
                         self.assertNotIn("pip-install", inputs)
                         # confirms setup-python runs before any command step
                         first_command = next(
-                            index
-                            for index, candidate in enumerate(job["steps"])
-                            if "run" in candidate
+                            index for index, candidate in enumerate(job["steps"]) if "run" in candidate
                         )
                         self.assertLess(job["steps"].index(step), first_command)
 
@@ -217,9 +204,7 @@ class TestWorkflowActions(unittest.TestCase):
             "build-wheels-macos": "lib/python/dist/*.whl",
         }
         uploads = list(self.release_uploads())
-        self.assertCountEqual(
-            [job_id for job_id, _, _ in uploads], expected_paths
-        )
+        self.assertCountEqual([job_id for job_id, _, _ in uploads], expected_paths)
         # validates artifact upload path and failure behavior per job
         for job_id, _, inputs in uploads:
             with self.subTest(job=job_id):
@@ -227,9 +212,7 @@ class TestWorkflowActions(unittest.TestCase):
                 if job_id == "build-matrix":
                     self.assertEqual(inputs["if-no-files-found"], "ignore")
                 else:
-                    self.assertNotEqual(
-                        inputs.get("if-no-files-found"), "ignore"
-                    )
+                    self.assertNotEqual(inputs.get("if-no-files-found"), "ignore")
 
     def test_downloads_wait_for_all_artifact_producers(self):
         """ensure release publishing jobs wait on all artifact producer jobs"""
@@ -240,41 +223,25 @@ class TestWorkflowActions(unittest.TestCase):
             with self.subTest(job=job_id):
                 job = self.workflows["Release.yml"]["jobs"][job_id]
                 self.assertTrue(producers.issubset(job["needs"]))
-                download = self.action_step(
-                    "Release.yml", job_id, "actions/download-artifact"
-                )
+                download = self.action_step("Release.yml", job_id, "actions/download-artifact")
                 self.assertEqual(download["with"]["merge-multiple"], "true")
 
     def test_pypi_download_includes_every_wheel_and_excludes_native_binaries(self):
         """ensure PyPI publication downloads wheels and excludes binaries"""
-        download = self.action_step(
-            "Release.yml", "publish-pypi", "actions/download-artifact"
-        )["with"]
+        download = self.action_step("Release.yml", "publish-pypi", "actions/download-artifact")["with"]
         artifacts = self.expanded_release_artifacts()
-        wheels = {
-            name for name, job_id in artifacts
-            if job_id.startswith("build-wheels-")
-        }
-        selected = {
-            name for name, _ in artifacts
-            if fnmatchcase(name, download["pattern"])
-        }
+        wheels = {name for name, job_id in artifacts if job_id.startswith("build-wheels-")}
+        selected = {name for name, _ in artifacts if fnmatchcase(name, download["pattern"])}
         self.assertTrue(wheels)
         # validates wheel pattern selection matches wheels exactly
         self.assertEqual(selected, wheels)
-        self.assertNotIn(
-            "name", download, "A name filter overrides the wheel pattern"
-        )
+        self.assertNotIn("name", download, "A name filter overrides the wheel pattern")
         self.assertEqual(download["path"], "lib/python/dist")
 
     def test_github_release_download_path_matches_published_files(self):
         """validate GitHub release action publishes downloaded staging assets"""
-        download = self.action_step(
-            "Release.yml", "publish-release", "actions/download-artifact"
-        )
-        publish = self.action_step(
-            "Release.yml", "publish-release", "softprops/action-gh-release"
-        )
+        download = self.action_step("Release.yml", "publish-release", "actions/download-artifact")
+        publish = self.action_step("Release.yml", "publish-release", "softprops/action-gh-release")
         self.assertNotIn("name", download["with"])
         self.assertNotIn("pattern", download["with"])
         # verifies downloaded files match release published glob
@@ -285,23 +252,16 @@ class TestWorkflowActions(unittest.TestCase):
         publish_idx = job["steps"].index(publish)
         self.assertLess(download_idx, publish_idx)
         # verifies write permissions for release creation
-        self.assertEqual(
-            self.workflows["Release.yml"]["permissions"]["contents"], "write"
-        )
+        self.assertEqual(self.workflows["Release.yml"]["permissions"]["contents"], "write")
         self.assertTrue((ROOT / publish["with"]["body_path"]).is_file())
 
     def test_qemu_is_ready_before_building_arm64_wheels(self):
         """verify QEMU multi-architecture setup precedes ARM64 cibuildwheel"""
         job = self.workflows["Release.yml"]["jobs"]["build-wheels-linux"]
-        qemu = self.action_step(
-            "Release.yml", "build-wheels-linux", "docker/setup-qemu-action"
-        )
+        qemu = self.action_step("Release.yml", "build-wheels-linux", "docker/setup-qemu-action")
         # confirms qemu configures arm64 platform support
         self.assertIn("arm64", qemu["with"]["platforms"].split(","))
-        builds = [
-            step for step in job["steps"]
-            if "python -m cibuildwheel " in step.get("run", "")
-        ]
+        builds = [step for step in job["steps"] if "python -m cibuildwheel " in step.get("run", "")]
         self.assertEqual(len(builds), 1)
         self.assertIn("aarch64", builds[0]["env"]["CIBW_ARCHS_LINUX"].split())
         # asserts qemu initialization precedes cibuildwheel run
@@ -309,9 +269,7 @@ class TestWorkflowActions(unittest.TestCase):
 
     def test_codecov_keeps_both_reports_and_non_blocking_uploads(self):
         """verify codecov action uploads both C++ and Python coverage reports"""
-        upload = self.action_step(
-            "coverage.yml", "coverage", "codecov/codecov-action"
-        )
+        upload = self.action_step("coverage.yml", "coverage", "codecov/codecov-action")
         # verifies both C++ and Python coverage report files are uploaded
         self.assertEqual(
             set(upload["with"]["files"].split(",")),
@@ -319,9 +277,7 @@ class TestWorkflowActions(unittest.TestCase):
         )
         # verifies non-blocking error behavior and token configuration
         self.assertEqual(upload["with"]["fail_ci_if_error"], "false")
-        self.assertEqual(
-            upload["env"]["CODECOV_TOKEN"], "${{ secrets.CODECOV_TOKEN }}"
-        )
+        self.assertEqual(upload["env"]["CODECOV_TOKEN"], "${{ secrets.CODECOV_TOKEN }}")
 
     def test_dependabot_metadata_output_remains_wired_to_the_major_update_guard(self):
         """verify dependabot automerge guard blocks semver-major updates"""
@@ -335,45 +291,27 @@ class TestWorkflowActions(unittest.TestCase):
         # validates pull_request_target trigger and bot actor condition
         self.assertIn("pull_request_target", workflow["on"])
         self.assertEqual(job["if"], "github.actor == 'dependabot[bot]'")
-        self.assertEqual(
-            metadata["with"]["github-token"], "${{ secrets.GITHUB_TOKEN }}"
-        )
+        self.assertEqual(metadata["with"]["github-token"], "${{ secrets.GITHUB_TOKEN }}")
         consumers = [step for step in job["steps"] if "run" in step]
         self.assertTrue(consumers)
         # verifies steps guard against semver-major dependency updates
-        guard = (
-            f"steps.{metadata['id']}.outputs.update-type != "
-            "'version-update:semver-major'"
-        )
+        guard = f"steps.{metadata['id']}.outputs.update-type != 'version-update:semver-major'"
         for step in consumers:
             with self.subTest(step=step.get("name")):
                 self.assertEqual(step["if"], guard)
-                self.assertLess(
-                    job["steps"].index(metadata), job["steps"].index(step)
-                )
+                self.assertLess(job["steps"].index(metadata), job["steps"].index(step))
         # confirms job avoids repository checkout to prevent untrusted execution
-        self.assertFalse(
-            any(
-                step.get("uses", "").startswith("actions/checkout@")
-                for step in job["steps"]
-            )
-        )
+        self.assertFalse(any(step.get("uses", "").startswith("actions/checkout@") for step in job["steps"]))
 
     def test_pages_actions_preserve_upload_deploy_order_and_environment_output(self):
         """verify Pages configure, upload, and deploy sequence and config"""
         workflow = self.workflows["pages.yml"]
         job = workflow["jobs"]["deploy"]
-        configure = self.action_step(
-            "pages.yml", "deploy", "actions/configure-pages"
-        )
-        upload = self.action_step(
-            "pages.yml", "deploy", "actions/upload-pages-artifact"
-        )
+        configure = self.action_step("pages.yml", "deploy", "actions/configure-pages")
+        upload = self.action_step("pages.yml", "deploy", "actions/upload-pages-artifact")
         deploy = self.action_step("pages.yml", "deploy", "actions/deploy-pages")
         # verifies configure -> upload -> deploy step execution sequence
-        self.assertLess(
-            job["steps"].index(configure), job["steps"].index(upload)
-        )
+        self.assertLess(job["steps"].index(configure), job["steps"].index(upload))
         self.assertLess(job["steps"].index(upload), job["steps"].index(deploy))
         # verifies web documentation path and presence of entrypoint index.html
         self.assertEqual(upload["with"]["path"], "./docs/web")

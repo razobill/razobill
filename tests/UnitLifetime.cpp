@@ -42,9 +42,7 @@ TEST_CASE("string pool lifetime bound lookup") {
 TEST_CASE("scanner scan result lifetime bound") {
     std::string msg = "worker 42 reported status OK";
     std::size_t tokenCount = 0;
-    auto res = razobill::core::scan(msg, [&](std::string_view, std::string_view) {
-        ++tokenCount;
-    });
+    auto res = razobill::core::scan(msg, [&](std::string_view, std::string_view) { ++tokenCount; });
     CHECK(tokenCount > 0);
     CHECK(res.tail.data() >= msg.data());
     CHECK(res.tail.data() <= msg.data() + msg.size());

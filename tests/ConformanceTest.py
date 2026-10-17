@@ -38,9 +38,7 @@ def find_c_lib():
             p = root_dir / sub / name
             if p.exists():
                 return p
-    raise RuntimeError(
-        f"Cannot find compiled C ABI shared library in {root_dir / 'build'}"
-    )
+    raise RuntimeError(f"Cannot find compiled C ABI shared library in {root_dir / 'build'}")
 
 
 dll_path = find_c_lib()
@@ -116,9 +114,7 @@ if ext_path and ext_path.exists():
     con.load_extension(str(ext_path).replace("\\", "/"))
     has_duckdb_ext = True
 else:
-    print(
-        f"[ConformanceTest] Notice: DuckDB extension not found in {root_dir / 'build'}, skipping DuckDB SQL stage."
-    )
+    print(f"[ConformanceTest] Notice: DuckDB extension not found in {root_dir / 'build'}, skipping DuckDB SQL stage.")
 
 
 # executes C ABI split and join roundtrip via ctypes
@@ -187,9 +183,7 @@ def main():
     corpus_file = Path(__file__).resolve().parent / "ConformanceCorpus.txt"
     lines = corpus_file.read_text(encoding="utf-8").splitlines()
 
-    print(
-        f"Running Cross-Language Conformance Test on {len(lines)} lines from {corpus_file.name}..."
-    )
+    print(f"Running Cross-Language Conformance Test on {len(lines)} lines from {corpus_file.name}...")
 
     for idx, line in enumerate(lines):
         line_bytes = line.encode("utf-8")
@@ -197,33 +191,23 @@ def main():
         # 1. Python core execution
         py_rec = rz.RzSplit(line)
         py_joined = rz.RzJoin(py_rec.template, py_rec.ints, py_rec.strs)
-        assert py_joined == line, (
-            f"Python roundtrip mismatch line {idx}: {py_joined!r} != {line!r}"
-        )
+        assert py_joined == line, f"Python roundtrip mismatch line {idx}: {py_joined!r} != {line!r}"
 
         # 2. C ABI execution
         c_tmpl, c_ints, c_strs, c_joined_bytes = run_c(line_bytes)
-        assert c_joined_bytes == line_bytes, (
-            f"C roundtrip mismatch line {idx}: {c_joined_bytes!r} != {line_bytes!r}"
-        )
+        assert c_joined_bytes == line_bytes, f"C roundtrip mismatch line {idx}: {c_joined_bytes!r} != {line_bytes!r}"
 
         # 3. DuckDB SQL execution (if extension is loaded)
         if has_duckdb_ext:
             db_tmpl, db_ints, db_strs, db_joined = run_duckdb(line)
-            assert db_joined == line, (
-                f"DuckDB roundtrip mismatch line {idx}: {db_joined!r} != {line!r}"
-            )
+            assert db_joined == line, f"DuckDB roundtrip mismatch line {idx}: {db_joined!r} != {line!r}"
 
         # cross-language conformance assertions
         assert py_rec.template == c_tmpl, (
             f"Template mismatch on line {idx}:\n  Python: {py_rec.template}\n  C ABI:  {c_tmpl}"
         )
-        assert py_rec.ints == c_ints, (
-            f"Ints mismatch on line {idx}:\n  Python: {py_rec.ints}\n  C ABI:  {c_ints}"
-        )
-        assert py_rec.strs == c_strs, (
-            f"Strs mismatch on line {idx}:\n  Python: {py_rec.strs}\n  C ABI:  {c_strs}"
-        )
+        assert py_rec.ints == c_ints, f"Ints mismatch on line {idx}:\n  Python: {py_rec.ints}\n  C ABI:  {c_ints}"
+        assert py_rec.strs == c_strs, f"Strs mismatch on line {idx}:\n  Python: {py_rec.strs}\n  C ABI:  {c_strs}"
 
         if has_duckdb_ext:
             assert c_tmpl == db_tmpl, (
@@ -236,14 +220,8 @@ def main():
                 f"Strs mismatch with DuckDB on line {idx}:\n  C ABI:  {c_strs}\n  DuckDB: {db_strs}"
             )
 
-    status_suffix = (
-        "across Python, C ABI, and DuckDB SQL!"
-        if has_duckdb_ext
-        else "across Python and C ABI!"
-    )
-    print(
-        f"SUCCESS: All {len(lines)} lines produced 100% byte-identical results {status_suffix}"
-    )
+    status_suffix = "across Python, C ABI, and DuckDB SQL!" if has_duckdb_ext else "across Python and C ABI!"
+    print(f"SUCCESS: All {len(lines)} lines produced 100% byte-identical results {status_suffix}")
 
 
 if __name__ == "__main__":

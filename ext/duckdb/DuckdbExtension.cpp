@@ -464,7 +464,8 @@ private:
 /// RAII builder and registrar for DuckDB scalar function overloads
 class FunctionSet {
 public:
-    explicit FunctionSet(const char* name RZ_LIFETIMEBOUND) : name_(name), set_(duckdb_create_scalar_function_set(name)) {}
+    explicit FunctionSet(const char* name RZ_LIFETIMEBOUND)
+        : name_(name), set_(duckdb_create_scalar_function_set(name)) {}
     ~FunctionSet() {
         if (set_) duckdb_destroy_scalar_function_set(&set_);
     }

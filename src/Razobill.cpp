@@ -40,7 +40,8 @@ namespace {
 class TransactionGuard {
 public:
     // ~ clickhouse adbc has no multi-statement acid, so guard stays dormant
-    explicit TransactionGuard(Backend& db RZ_LIFETIMEBOUND, Flavor flavor) : db_(db), active_(flavor == Flavor::DuckDB) {
+    explicit TransactionGuard(Backend& db RZ_LIFETIMEBOUND, Flavor flavor)
+        : db_(db), active_(flavor == Flavor::DuckDB) {
         if (active_) {
             try {
                 db_.exec("BEGIN TRANSACTION");

@@ -114,7 +114,7 @@ RZ_API RzStatus RzSplit(const char* message, size_t messageLength, RzRecord* out
  * Reconstructs the exact original message from a decomposed record.
  *
  * inv: byte-for-byte exact restoration of original input
- * in: record points to valid RzRecord with matching slot counts
+ * in: record points to valid RzRecord with matching variable counts
  * out: outBuffer receives reconstructed bytes up to bufferCapacity; outLength receives written or required length
  * own: writes into caller-owned outBuffer; no internal allocations
  * thread: reentrant, safe across concurrent threads with distinct buffers

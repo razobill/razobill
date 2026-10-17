@@ -57,8 +57,8 @@ WORKFLOW_ACTIONS = {
 class TestWorkflowActions(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        # BaseLoader preserves "on", version numbers and action inputs as strings,
-        # avoiding PyYAML's YAML 1.1 boolean and floating point conversions.
+        # BaseLoader preserves "on", version numbers, and action inputs as
+        # strings, avoiding PyYAML's YAML 1.1 boolean and float conversions.
         cls.workflows = {
             name: yaml.load((ROOT / ".github/workflows" / name).read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
             for name in WORKFLOW_ACTIONS

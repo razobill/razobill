@@ -197,7 +197,7 @@ if(NOT RAZOBILL_BUILD_EXT_ONLY)
     # (both razobill and librazobill names)
     add_custom_command(TARGET RazobillDuckdb POST_BUILD
       COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/AppendExtensionMetadata.py -l $<TARGET_FILE:RazobillDuckdb> -n razobill
-              -o ${CMAKE_BINARY_DIR}/razobill.duckdb_extension -p ${DUCKDB_PLATFORM} -dv v1.2.0 -ev v${LIBRAZOBILL_PROJECT_VERSION} --abi-type C_STRUCT
+              -o ${CMAKE_BINARY_DIR}/razobill.duckdb_extension -p ${DUCKDB_PLATFORM} -dv v1.5.4 -ev v${LIBRAZOBILL_PROJECT_VERSION} --abi-type C_STRUCT
       COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_BINARY_DIR}/razobill.duckdb_extension ${CMAKE_BINARY_DIR}/librazobill.duckdb_extension
       COMMENT "Signing DuckDB loadable extension metadata for community distribution" VERBATIM)
 

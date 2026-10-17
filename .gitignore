@@ -129,3 +129,4 @@ gmon.out
 *.log
 *.serena
 target/
+.superpowers/

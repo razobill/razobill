@@ -9,13 +9,51 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [1.1.3] - 2026-10-18
 
+### Added
+
+- **Clang Lifetime Safety Analysis**:
+  - Introduced compile-time lifetime and borrow annotations in `include/librazobill/Lifetime.hpp` (`[[clang::lifetimebound]]`, `[[clang::coro_lifetimebound]]`, `[[clang::coro_return_type]]`).
+  - Applied lifetime safety annotations across `StringPool`, `Scanner`, `MemoryArena`, `RazobillEngine`, `DuckdbExtension`, `Support.hpp`, `Razobill`, and `BackendAdbc`.
+  - Added dedicated lifetime unit test suite (`tests/UnitLifetime.cpp`) with 8 test cases verifying dangling string_view and pointer prevention.
+  - Implemented automated Clang 18+ `-Wlifetime-safety` workflow (`.github/workflows/lifetime-safety.yml`) publishing Markdown job summaries.
+  - Added comprehensive architectural documentation in `docs/explanation/lifetime-safety.md`.
+- **Contributor and Agent Operations Governance**:
+  - Added `AGENTS.md` defining repository invariants, verified build and test commands, documentation lint rules, and operational guidelines.
+- **Supply Chain and Citation Standards**:
+  - Added standard Citation File Format metadata (`CITATION.cff`) for both foundational research and software distribution.
+  - Automated CycloneDX SPDX SBOM generation during release packaging.
+
 ### Changed
 
-- **DuckDB Extension API Upgrade**:
-  - Upgraded DuckDB extension C API headers and metadata stamping to DuckDB v1.5.6.
-  - Aligned build configurations (`Makefile` with `TARGET_DUCKDB_VERSION=v1.5.6` and `CMakeLists.txt` with `-dv v1.5.6`).
-  - Bumped Python test dependency baseline to `duckdb>=1.5.6`.
+- **DuckDB Extension API Upgrade to v1.5.6**:
+  - Upgraded DuckDB extension C API headers (`duckdb.h`, `duckdb_extension.h`) from v1.2.0 to official DuckDB v1.5.6.
+  - Updated metadata footer stamping in `CMakeLists.txt` (`-dv v1.5.6`, `-ev v1.1.3`, `C_STRUCT` ABI).
+  - Configured `Makefile` with `TARGET_DUCKDB_VERSION=v1.5.6` and `EXTENSION_VERSION=v1.1.3`.
   - Updated community distribution manifest `ext/duckdb/description.yml` to `1.1.3` (`v1.1.3`).
+  - Bumped Python dependency baseline in `lib/python/pyproject.toml` and GitHub Actions workflows to `duckdb>=1.5.6`.
+  - Validated DuckDB 1.5.6 compatibility: passed all 14 integration test cases (134,910 assertions) and 1,000,000 row scale test with 0 mismatches.
+- **Diataxis Documentation Suite Overhaul**:
+  - Complete restructuring and rewrite across all four Diataxis quadrants (`tutorials/`, `how-to/`, `reference/`, `explanation/`).
+  - Standardized all codebase comments and file banners across C++, Python, and workflows to English wrapped to 80 columns.
+  - Verified 100% relative documentation links (240 links) with zero dead links.
+- **Version Bump**:
+  - Bumped canonical project version to `1.1.3` across `VERSION`, `Version.hpp`, `RazobillC.h`, `setup.py`, and `pyrazobill/__init__.py`.
+
+### Fixed
+
+- **CodeQL Alert Remediations**:
+  - Resolved Alert #124 (`cpp/long-switch`): refactored `case Kind::IntList:` and `case Kind::StrList:` in `ext/duckdb/DuckdbExtension.cpp` into dedicated inline helper functions (`appendIntListValues`, `appendStrListValues`), reducing case length from 42 lines to 4 lines.
+  - Resolved Alert #97 (`cpp/stack-address-escape` in `thirdparty/doctest.h`): dismissed as non-production test framework code while strictly preserving `thirdparty/` immutability.
+- **DuckDB Multi-Width List Type Confusion**:
+  - Fixed integer list vector decoding in `DuckdbExtension.cpp` to respect physical type strides for `BIGINT`, `INTEGER`, `SMALLINT`, `TINYINT`, `UBIGINT`, `UINTEGER`, `USMALLINT`, and `UTINYINT`, eliminating potential out-of-bounds heap reading.
+- **Python Concurrency & GIL Ephemeral Bytes Lifetime**:
+  - Fixed dangling reference vulnerability in `lib/python/PyRazobill.cpp` `RzSplitMany` by pinning `py::object pyBytes` in `InputItem` during multi-threaded worker execution with released GIL.
+  - Added POSIX fork safety handler in `PyRazobill.cpp` (`pthread_atfork`) to prevent multi-threaded deadlock upon process fork.
+- **ADBC Connector Bounds & Offset Validation**:
+  - Hardened Arrow C data interface bounds checking in `src/BackendAdbc.cpp` (`isValid`, decimal decoding null buffer checks, negative offset validation).
+- **Compiler & Linter Warnings**:
+  - Removed reserved identifier `_CRT_SECURE_NO_WARNINGS` in source headers to comply with strict `clang-tidy`.
+  - Handled invalid record count arguments gracefully in `tools/BenchDuckdb.py`.
 
 ---
 
@@ -147,4 +185,6 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
+[1.1.3]: https://github.com/razobill/razobill/releases/tag/v1.1.3
+[1.1.2]: https://github.com/razobill/razobill/releases/tag/v1.1.2
 [1.0.0]: https://github.com/razobill/razobill/releases/tag/v1.0.0

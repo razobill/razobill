@@ -1,4 +1,11 @@
-# Vector Production Pipeline: Razobill Edge Compaction
+# =============================================================================
+# Vector edge pipeline configuration for razobill log decomposition
+#
+# ingests kubernetes container logs, executes parse_razobill in-flight VRL
+# transform, and fans out structured columns to s3 parquet and clickhouse
+# =============================================================================
+
+# input source: tail active container log files from kubernetes node storage
 sources:
   kubernetes_logs:
     type: file
@@ -6,6 +13,7 @@ sources:
       - /var/log/containers/*.log
     read_from: beginning
 
+# stream transform: invoke librazobill native remap transform on raw log line
 transforms:
   razobill_decompose:
     type: remap
@@ -21,7 +29,9 @@ transforms:
       .strs = .razobill.strs
       .hash = .razobill.hash
 
+# downstream destinations: columnar analytics storage with dual target fanout
 sinks:
+  # cold analytics archive: columnar parquet files compressed with zstd
   aws_s3_parquet:
     type: aws_s3
     inputs:
@@ -32,6 +42,7 @@ sinks:
       codec: parquet
     compression: zstd
 
+  # hot query engine: direct clickhouse ingest into compact schema table
   clickhouse_cluster:
     type: clickhouse
     inputs:

@@ -1,17 +1,21 @@
-// DuckDB adapter: exposes librazobill data plane as scalar functions through the stable C extension API.
+// =============================================================================
+// DuckDB loadable C extension for librazobill
 //
-// ARCHITECTURE: Vectorized SQL Scalar Execution
-// DuckDB processes queries using vector-at-a-time execution (typically 2,048 rows per chunk).
-// Rather than allocating intermediate C++ strings or structures for each row in the chunk,
-// we process directly from raw memory pointers (`duckdb_string_t`) into the result vector.
+// exposes RzSplit, RzJoin, RzTemplate, and RzHash as vectorized SQL scalar
+// functions using the DuckDB C extension API; achieves zero per-row heap
+// allocation through thread-local scratch reuse across chunks
+// =============================================================================
+
+// architecture: vectorized SQL scalar execution
+// DuckDB processes queries in vector batches (typically 2,048 rows per chunk);
+// inputs read directly from raw duckdb_string_t memory pointers and written
+// into output column vectors with zero intermediate string copies
 //
-// CONCURRENCY & ZERO ALLOCATION:
-// DuckDB executes scalar functions across multiple background worker threads simultaneously.
-// We use a thread-local Scratch struct. Every OS thread has its own private working buffer:
-// - ZERO locks or atomic operations on the query hot path.
-// - Buffers expand once to steady-state capacity and are reused across all subsequent chunks.
-// - A 1 MB retention cap (`kScratchKeepBytes`) automatically prunes memory if an anomalous log
-//   caused temporary spikes.
+// concurrency & zero allocation:
+// DuckDB executes scalar functions across worker threads in parallel;
+// thread-local Scratch buffers isolate state with zero locks or atomics on
+// the query hot path; buffers grow once to steady-state capacity and a 1 MB
+// retention cap (kScratchKeepBytes) prunes anomalous spike rows
 
 #include <cstring>
 #include <exception>
@@ -30,10 +34,13 @@ namespace {
 using razobill::Status;
 namespace core = razobill::core;
 
+// 1 MB retention cap for thread-local working buffers
 constexpr std::size_t kScratchKeepBytes = std::size_t{1} << 20U;
 
+// supported DuckDB physical column types for dynamic argument binding
 enum class Kind : unsigned char { I64, I32, I16, I8, U64, U32, U16, U8, Str, IntList, StrList, Unsupported };
 
+// column argument binding handle unpacked from incoming data chunk
 struct Arg {
     Kind kind = Kind::Unsupported;
     void* data = nullptr;
@@ -42,6 +49,11 @@ struct Arg {
     std::uint64_t* childValidity = nullptr;
 };
 
+/// classify DuckDB logical type into internal Kind enum
+/// in: valid duckdb_logical_type handle
+/// out: Kind enum identifying scalar integer, string, or list
+/// own: destroys temporary child logical type handles internally
+/// thread: thread-safe
 inline Kind classify(duckdb_logical_type t) {
     auto id = duckdb_get_type_id(t);
     switch (id) {
@@ -81,6 +93,8 @@ inline Kind classify(duckdb_logical_type t) {
     }
 }
 
+/// thread-local working memory for vectorized log parsing and reconstruction
+/// thread: thread-local instance per OS execution thread
 struct Scratch {
     core::SlotRecord record;
     std::string text;
@@ -88,6 +102,7 @@ struct Scratch {
     std::vector<std::string_view> strs;
     std::vector<Arg> args;
 
+    /// prune oversized vectors back to initial capacity if exceeding 1 MB cap
     void trim() {
         if (text.capacity() > kScratchKeepBytes) std::string().swap(text);
         if (record.skeleton.capacity() > kScratchKeepBytes) std::string().swap(record.skeleton);
@@ -101,28 +116,40 @@ struct Scratch {
     }
 };
 
+/// retrieve or allocate thread-local scratch buffer instance
+/// out: reference to private Scratch structure for current thread
+/// thread: thread-safe, zero locks on hot path
 Scratch& scratch() {
     thread_local Scratch s;
     return s;
 }
 
+/// wrap DuckDB string struct into non-owning string_view
+/// in: s is valid or inline duckdb_string_t
+/// out: string_view borrowing memory from DuckDB vector
+/// own: borrowed, valid for duration of data chunk processing
 inline std::string_view viewOf(duckdb_string_t& s) {
     return {duckdb_string_t_data(&s), duckdb_string_t_length(s)};
 }
 
+/// test whether row at index is non-null in DuckDB validity bitmask
+/// in: validity pointer may be null if all rows in chunk are valid
 inline bool isValid(std::uint64_t* validity, idx_t row) {
     return validity == nullptr || duckdb_validity_row_is_valid(validity, row);
 }
 
+/// mark row in output vector as SQL NULL
 inline void setNull(duckdb_vector out, idx_t row) {
     duckdb_vector_ensure_validity_writable(out);
     duckdb_validity_set_row_invalid(duckdb_vector_get_validity(out), row);
 }
 
+/// assign string_view contents into DuckDB string output vector element
 inline void put(duckdb_vector out, idx_t row, std::string_view v) {
     duckdb_vector_assign_string_element_len(out, row, v.data(), v.size());
 }
 
+/// format actionable error diagnostic and set error on DuckDB scalar function
 inline void fail(duckdb_function_info info, const char* fn, Status s, std::string_view tmpl = {}) {
     std::string why;
     switch (s) {
@@ -149,7 +176,12 @@ inline void fail(duckdb_function_info info, const char* fn, Status s, std::strin
     duckdb_scalar_function_set_error(info, m.c_str());
 }
 
-// ---- RzTemplate ----
+/// vectorized SQL scalar implementation for RzTemplate(VARCHAR/BLOB)
+/// inv: template matches RzSplit(line).template byte-for-byte
+/// in: data chunk column 0 contains VARCHAR or BLOB log lines
+/// out: out vector populated with structural templates; NULL inputs yield NULL
+/// thread: thread-safe via thread-local scratch
+/// err: sets scalar function error on parser failure
 void RzTemplateImpl(duckdb_function_info info, duckdb_data_chunk in, duckdb_vector out) {
     auto& sc = scratch();
     const idx_t n = duckdb_data_chunk_get_size(in);
@@ -175,7 +207,12 @@ void RzTemplateImpl(duckdb_function_info info, duckdb_data_chunk in, duckdb_vect
     sc.trim();
 }
 
-// ---- RzSplit ----
+/// vectorized SQL scalar implementation for RzSplit(VARCHAR/BLOB)
+/// inv: RzJoin(RzSplit(x)) == x
+/// in: data chunk column 0 contains VARCHAR or BLOB log lines
+/// out: STRUCT(template VARCHAR/BLOB, ints BIGINT[], strs VARCHAR[]/BLOB[])
+/// thread: thread-safe via thread-local scratch
+/// err: sets scalar function error on parser failure; NULL inputs yield NULL
 void RzSplitImpl(duckdb_function_info info, duckdb_data_chunk in, duckdb_vector out) {
     auto& sc = scratch();
     const idx_t n = duckdb_data_chunk_get_size(in);
@@ -241,7 +278,12 @@ void RzSplitImpl(duckdb_function_info info, duckdb_data_chunk in, duckdb_vector 
     sc.trim();
 }
 
-// ---- RzJoin ----
+/// vectorized SQL scalar implementation for RzJoin(template, ints, strs, ...)
+/// inv: RzJoin(*RzSplit(x)) == x
+/// in: column 0 is template; subsequent columns are lists or varargs
+/// out: reconstructed VARCHAR or BLOB vector matching template type
+/// thread: thread-safe via thread-local scratch
+/// err: sets error on placeholder count mismatch or malformed template
 void RzJoinImpl(duckdb_function_info info, duckdb_data_chunk in, duckdb_vector out) {
     auto& sc = scratch();
     const idx_t n = duckdb_data_chunk_get_size(in);
@@ -364,7 +406,11 @@ void RzJoinImpl(duckdb_function_info info, duckdb_data_chunk in, duckdb_vector o
     sc.trim();
 }
 
-// ---- RzHash ----
+/// vectorized SQL scalar implementation for RzHash(VARCHAR/BLOB)
+/// inv: bit-identical to C++ RzHash, pyrazobill.RzHash, and ClickHouse xxHash64
+/// in: column 0 contains VARCHAR or BLOB templates or messages
+/// out: UBIGINT vector of 64-bit unsigned hashes (seed 0)
+/// thread: thread-safe, pure calculation
 void RzHashImpl(duckdb_function_info /*info*/, duckdb_data_chunk in, duckdb_vector out) {
     const idx_t n = duckdb_data_chunk_get_size(in);
     auto* vec = duckdb_data_chunk_get_vector(in, 0);
@@ -380,6 +426,7 @@ void RzHashImpl(duckdb_function_info /*info*/, duckdb_data_chunk in, duckdb_vect
     }
 }
 
+/// exception boundary wrapper converting C++ exceptions to DuckDB error strings
 template <void (*Fn)(duckdb_function_info, duckdb_data_chunk, duckdb_vector)>
 void guarded(duckdb_function_info info, duckdb_data_chunk in, duckdb_vector out) {
     try {
@@ -391,6 +438,7 @@ void guarded(duckdb_function_info info, duckdb_data_chunk in, duckdb_vector out)
     }
 }
 
+/// RAII wrapper managing duckdb_logical_type handle lifetime
 class Type {
 public:
     explicit Type(duckdb_type id) : t(duckdb_create_logical_type(id)) {}
@@ -412,6 +460,7 @@ private:
     explicit Type(duckdb_logical_type owned) : t(owned) {}
 };
 
+/// RAII builder and registrar for DuckDB scalar function overloads
 class FunctionSet {
 public:
     explicit FunctionSet(const char* name) : name_(name), set_(duckdb_create_scalar_function_set(name)) {}
@@ -459,6 +508,7 @@ private:
 
 } // namespace
 
+/// primary DuckDB C extension entrypoint loaded via 'LOAD razobill;'
 // NOLINTNEXTLINE(cppcoreguidelines-pro-type-cstyle-cast,cppcoreguidelines-avoid-non-const-global-variables,readability-named-parameter)
 DUCKDB_EXTENSION_ENTRYPOINT(duckdb_connection connection, duckdb_extension_info, struct duckdb_extension_access*) {
     try {
@@ -485,7 +535,7 @@ DUCKDB_EXTENSION_ENTRYPOINT(duckdb_connection connection, duckdb_extension_info,
         splitSet.add({blob.t}, splitStructBlob.t, guarded<RzSplitImpl>);
         ok = ok && splitSet.registerSet(connection);
 
-        // 2. RzJoin(template, ints, strs) -> VARCHAR / BLOB (also supports varargs)
+        // 2. RzJoin(template, ints, strs) -> VARCHAR / BLOB (supports varargs)
         FunctionSet joinSet("RzJoin");
         joinSet.add({varchar.t, bigintList.t, varcharList.t}, varchar.t, guarded<RzJoinImpl>);
         joinSet.add({blob.t, bigintList.t, blobList.t}, blob.t, guarded<RzJoinImpl>);
@@ -513,7 +563,8 @@ DUCKDB_EXTENSION_ENTRYPOINT(duckdb_connection connection, duckdb_extension_info,
     }
 }
 
-// Dual-entrypoint alias: allows loading via both 'LOAD razobill;' and 'LOAD librazobill;'
+// dual-entrypoint alias supports both 'LOAD razobill;' and 'LOAD librazobill;'
+// ~ allows both names so neither team argues
 DUCKDB_EXTENSION_EXTERN_C_GUARD_OPEN
 DUCKDB_CAPI_ENTRY_VISIBILITY DUCKDB_EXTENSION_API bool librazobill_init_c_api(duckdb_extension_info info,
                                                                               struct duckdb_extension_access* access) {

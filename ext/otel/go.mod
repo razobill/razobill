@@ -1,3 +1,10 @@
+// =============================================================================
+// OpenTelemetry Collector processor module for razobill
+//
+// defines Go module dependencies for embedding razobill processor into custom
+// OpenTelemetry Collector distributions
+// =============================================================================
+
 module github.com/razobill/razobill/ext/otel
 
 go 1.25.0

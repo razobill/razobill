@@ -1,3 +1,10 @@
+// =============================================================================
+// OpenTelemetry Collector log processor implementation for razobill
+//
+// decomposes incoming log record bodies into structural templates, integers,
+// and variable strings via the Razobill C ABI, attaching them as attributes
+// =============================================================================
+
 package razobillprocessor
 
 /*
@@ -18,11 +25,16 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 )
 
+// RazobillProcessor intercepts OpenTelemetry log records and decomposes bodies
 type RazobillProcessor struct {
 	cfg          *Config
 	nextConsumer consumer.Logs
 }
 
+// NewRazobillProcessor creates an OpenTelemetry log record processor
+// in: cfg is validated configuration; next is downstream consumer
+// out: initialized *RazobillProcessor ready for lifecycle Start
+// err: nil under current implementation
 func NewRazobillProcessor(cfg *Config, next consumer.Logs) (*RazobillProcessor, error) {
 	return &RazobillProcessor{
 		cfg:          cfg,
@@ -34,18 +46,28 @@ func newRazobillProcessor(cfg *Config, next consumer.Logs) (*RazobillProcessor, 
 	return NewRazobillProcessor(cfg, next)
 }
 
+// Start initializes processor resources during collector startup
 func (p *RazobillProcessor) Start(_ context.Context, _ component.Host) error {
 	return nil
 }
 
+// Shutdown flushes and tears down processor resources during collector shutdown
 func (p *RazobillProcessor) Shutdown(_ context.Context) error {
 	return nil
 }
 
+// Capabilities signals that this processor mutates log record bodies/attributes
 func (p *RazobillProcessor) Capabilities() consumer.Capabilities {
 	return consumer.Capabilities{MutatesData: true}
 }
 
+// ConsumeLogs batches log records, decomposes messages via C ABI, and forwards
+// inv: reconstructed message matches original log line byte-for-byte
+// in: ctx is cancellation context; ld contains telemetry resource logs
+// out: forwards modified plog.Logs to downstream consumer
+// own: frees temporary C memory via C.free and C.RzFree before returning
+// thread: thread-safe across concurrent collector worker pipelines
+// err: forwards downstream consumer errors or sets razobill.error attribute
 func (p *RazobillProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs) error {
 	rls := ld.ResourceLogs()
 	for i := 0; i < rls.Len(); i++ {
@@ -62,6 +84,7 @@ func (p *RazobillProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs) error
 				var cRecord C.RzRecord
 				cMsg := C.CString(msg)
 
+				// invoke librazobill C ABI to parse message into template and slots
 				status := C.RzSplit(
 					cMsg,
 					C.size_t(len(msg)),
@@ -82,7 +105,7 @@ func (p *RazobillProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs) error
 						attrs.PutInt("razobill.formHash", int64(xxhash.Sum64String(tmplStr)))
 					}
 
-					// Copy 64-bit integers
+					// copy 64-bit integer parameters into razobill.ints slice attribute
 					if cRecord.intCount > 0 && cRecord.intValues != nil {
 						intsSlice := attrs.PutEmptySlice("razobill.ints")
 						intsSlice.EnsureCapacity(int(cRecord.intCount))
@@ -92,7 +115,7 @@ func (p *RazobillProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs) error
 						}
 					}
 
-					// Copy variable strings
+					// copy string parameters into razobill.strs slice attribute
 					if cRecord.strCount > 0 && cRecord.strValues != nil && cRecord.strLengths != nil {
 						strsSlice := attrs.PutEmptySlice("razobill.strs")
 						strsSlice.EnsureCapacity(int(cRecord.strCount))
@@ -104,10 +127,13 @@ func (p *RazobillProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs) error
 						}
 					}
 
+					// release heap allocations made by C ABI in RzRecord
 					C.RzFree(&cRecord)
 				} else {
+					// record diagnostic error message if parsing fails
 					rec.Attributes().PutStr("razobill.error", C.GoString(C.RzStatusMessage(status)))
 				}
+				// release C-string allocated for cgo boundary
 				C.free(unsafe.Pointer(cMsg))
 			}
 		}

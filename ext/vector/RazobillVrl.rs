@@ -1,10 +1,17 @@
-//! Native Vector Remap Language (VRL) function wrapping librazobill Universal C ABI.
-//!
-//! Provides zero-copy parsing of raw log strings into (template, ints, strs) structs.
+// =============================================================================
+// Vector Remap Language (VRL) native transform for razobill
+//
+// wraps librazobill Universal C ABI in Rust; exposes parse_razobill function
+// decomposing log messages into structured JSON-compatible event maps
+// =============================================================================
+
+//! native Vector Remap Language (VRL) transform wrapping librazobill C ABI
 
 use std::collections::BTreeMap;
 use std::os::raw::c_char;
 
+/// C ABI record structure returned by RzSplit
+/// own: internal memory allocated by C engine; must be released via RzFree
 #[repr(C)]
 #[derive(Debug)]
 pub struct RzRecord {
@@ -18,6 +25,7 @@ pub struct RzRecord {
     pub internal_handle: *mut std::ffi::c_void,
 }
 
+/// C ABI status codes matching RazobillC.h RzStatus
 #[repr(C)]
 #[derive(Debug, PartialEq, Eq)]
 pub enum RzStatus {
@@ -41,7 +49,13 @@ extern "C" {
     pub fn RzFree(record: *mut RzRecord);
 }
 
-/// Decomposes an input string into a structured JSON-compatible map.
+/// decompose raw log message into structured JSON event map
+/// inv: template and parameter slices reconstruct original message
+/// in: raw_msg is UTF-8 string slice
+/// out: Ok(BTreeMap) with "template", "form", "ints", and "strs"
+/// own: returns owned BTreeMap and serde_json::Value objects
+/// thread: thread-safe, no shared state
+/// err: returns Err with RzStatus description if RzSplit fails
 pub fn parse_razobill(raw_msg: &str) -> Result<BTreeMap<String, serde_json::Value>, String> {
     let mut record: RzRecord = unsafe { std::mem::zeroed() };
 
@@ -59,6 +73,7 @@ pub fn parse_razobill(raw_msg: &str) -> Result<BTreeMap<String, serde_json::Valu
         ));
     }
 
+    // RAII guard ensuring RzFree is invoked on return or unwind
     struct RecordGuard(*mut RzRecord);
     impl Drop for RecordGuard {
         fn drop(&mut self) {
@@ -69,10 +84,9 @@ pub fn parse_razobill(raw_msg: &str) -> Result<BTreeMap<String, serde_json::Valu
     }
     let _guard = RecordGuard(&mut record as *mut RzRecord);
 
-    // DESIGN DECISION (F-EXT-06):
-    // Vector VRL represents internal event values as UTF-8 JSON objects (`serde_json::Value`).
-    // Using `String::from_utf8_lossy` ensures invalid UTF-8 sequences in raw binary payloads do not panic
-    // or fail the entire VRL pipeline, safely replacing malformed bytes with U+FFFD (REPLACEMENT CHARACTER).
+    // Vector VRL represents internal event values as UTF-8 JSON objects
+    // (serde_json::Value); using from_utf8_lossy prevents malformed byte
+    // sequences from aborting the pipeline, replacing bad bytes with U+FFFD
     let form_str = if record.template_length > 0 && !record.template_str.is_null() {
         let form_slice = unsafe {
             std::slice::from_raw_parts(record.template_str as *const u8, record.template_length)
@@ -107,6 +121,7 @@ pub fn parse_razobill(raw_msg: &str) -> Result<BTreeMap<String, serde_json::Valu
         }
     }
 
+    // build structured event map with both "template" and "form" keys
     let mut map = BTreeMap::new();
     map.insert(
         "template".to_string(),

@@ -1,3 +1,10 @@
+# ==============================================================================
+# DuckDB community extension metadata specification
+#
+# defines extension identity, build system, excluded platforms, and repository
+# coordinates for the DuckDB community extension distribution repository
+# ==============================================================================
+
 extension:
   name: razobill
   description: High-performance lossless log parsing, analytical database compaction, and information-theoretic semantic accounting.
@@ -9,11 +16,13 @@ extension:
     - 4t1a
   excluded_platforms: "wasm_mvp;wasm_eh;wasm_threads;windows_amd64_mingw;windows_amd64_rtools"
 
+# upstream git repository coordinates and tagged release reference
 repo:
   github: razobill/razobill
   ref: v1.1.2
   ref_next: v1.1.2
 
+# documentation and sql usage examples published on DuckDB community portal
 docs:
   hello_world: |
     -- Install and load the Razobill extension

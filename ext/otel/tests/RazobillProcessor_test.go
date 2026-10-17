@@ -1,3 +1,10 @@
+// =============================================================================
+// OpenTelemetry Collector processor integration tests for razobill
+//
+// verifies end-to-end log record consumption, C ABI decomposition, body
+// replacement, and attribute population (ints, strs, formHash)
+// =============================================================================
+
 package tests
 
 import (
@@ -9,7 +16,9 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 )
 
+// TestRazobillProcessor_ConsumeLogs pins end-to-end log record decomposition
 func TestRazobillProcessor_ConsumeLogs(t *testing.T) {
+	// pins log record decomposition and attribute attachment in OTel pipeline
 	sink := new(consumertest.LogsSink)
 	cfg := rz.CreateDefaultConfig()
 	cfg.DropRawBody = true

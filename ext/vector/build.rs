@@ -1,7 +1,17 @@
+// =============================================================================
+// Cargo build script for razobill-vector VRL crate
+//
+// locates native build directory, instructs rustc to link with librazobill,
+// and stages razobill.dll into target/deps on Windows for automatic test runner
+// discovery
+// =============================================================================
+
 use std::env;
 use std::fs;
 use std::path::PathBuf;
 
+/// configure linker flags and stage shared libraries for test discovery
+/// inv: points rustc link search path to cmake build directory
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let build_dir = manifest_dir
@@ -11,11 +21,11 @@ fn main() {
         .unwrap()
         .join("build");
 
-    // Instruct Cargo to link against razobill library
+    // instruct cargo to link against native razobill shared library
     println!("cargo:rustc-link-search=native={}", build_dir.display());
     println!("cargo:rustc-link-lib=dylib=razobill");
 
-    // On Windows, copy razobill.dll into target and target/deps so tests find the DLL automatically
+    // copy razobill.dll into target/deps on Windows so cargo test finds it
     if cfg!(target_os = "windows") {
         let dll_src = build_dir.join("razobill.dll");
         if dll_src.exists() {
@@ -33,7 +43,7 @@ fn main() {
         }
     }
 
-    // Track dependencies for incremental builds
+    // track library binaries to trigger relink on cmake rebuild
     println!(
         "cargo:rerun-if-changed={}",
         build_dir.join("razobill.lib").display()

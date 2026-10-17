@@ -33,7 +33,7 @@ jobs:
     name: Lint Commits & Verify ABI
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -62,10 +62,10 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: "pip"
@@ -98,7 +98,7 @@ jobs:
           find lib/python/pyrazobill -maxdepth 1 -name "Core*" -exec cp {} release-staging/ \;
 
       - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: artifacts-${{ matrix.os }}
           path: release-staging/*
@@ -113,8 +113,8 @@ jobs:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
       - uses: ilammy/msvc-dev-cmd@v1
@@ -124,7 +124,7 @@ jobs:
           python -m build --wheel
         working-directory: lib/python
       - name: Upload Windows Wheel
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: wheels-windows-cp${{ matrix.python-version }}
           path: lib/python/dist/*.whl
@@ -134,12 +134,12 @@ jobs:
     needs: validate-and-lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Set up QEMU for aarch64 Emulation
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
         with:
           platforms: arm64
       - name: Install cibuildwheel
@@ -151,7 +151,7 @@ jobs:
           CIBW_ARCHS_LINUX: "x86_64 aarch64"
           CIBW_SKIP: "*-musllinux_* pp*"
       - name: Upload Linux Wheels
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: wheels-linux
           path: ./wheelhouse/*.whl
@@ -165,8 +165,8 @@ jobs:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
       - name: Build macOS Wheel
@@ -177,7 +177,7 @@ jobs:
           python -m build --wheel
         working-directory: lib/python
       - name: Upload macOS Wheel
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: wheels-macos-cp${{ matrix.python-version }}
           path: lib/python/dist/*.whl
@@ -187,20 +187,20 @@ jobs:
     needs: [build-matrix, build-wheels-windows, build-wheels-linux, build-wheels-macos]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Extract Tag Version
         id: get_version
         run: echo "VERSION=$(cat VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
 
       - name: Download Build Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: release-binaries
           merge-multiple: true
 
       - name: Generate SLSA Attestations & Publish
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ steps.get_version.outputs.VERSION }}
           name: librazobill v${{ steps.get_version.outputs.VERSION }}
@@ -216,15 +216,15 @@ jobs:
     needs: [build-matrix, build-wheels-windows, build-wheels-linux, build-wheels-macos]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
       - name: Download Pre-built Wheels
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: wheels-*
           path: lib/python/dist

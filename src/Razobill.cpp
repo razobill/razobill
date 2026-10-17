@@ -1,34 +1,17 @@
-// ==============================================================================
-// Razobill Analytical Engine Control Plane: Database & Schema Orchestrator
-// ==============================================================================
-//
-// ARCHITECTURE & RESPONSIBILITY:
-// While `Slots.hpp` and `SimdScanner.hpp` implement the pure, zero-allocation data
-// plane, `RazobillEngine` serves as the analytical database control plane. It coordinates
-// relational storage engines (DuckDB and ClickHouse chDB via ADBC) through two primary
-// deployment topologies:
-//
-// 1. Additive Indexing Layout (`logs`):
-//    Preserves the raw text column in-place while indexing each event with a 64-bit
-//    `form_id` (xxHash64, seed 0). Enables instant, zero-copy indexing without breaking
-//    legacy downstream applications.
-//
-// 2. Compact Decomposed Columnar Layout (`logs_c`):
-//    Transforms unstructured log messages into typed columnar slots:
-//    - `form_no`: Dense 16/32-bit foreign key referencing the `rb_form` dictionary.
-//    - `i0..i3`: First 4 extracted integer variables BitPacked as raw 64-bit integers.
-//    - `s0..s3`: First 4 extracted string variables as dictionary-encoded text pools.
-//    - `oi, os`: Overflow arrays capturing variable tails for high-variable anomalies.
-//
-// 3. Relational Metadata & Semantic Meaning (`rb_form`, `rb_doubt`):
-//    Maintains formal dictionaries and regex-based rule classifiers that map structural
-//    forms to semantic meanings, producing the zero-leakage view `logs_m`.
-//
-// 4. Constructive Lossless Verification (`verify()`):
-//    Executes an in-database bit-level parity pass confirming:
-//    $$\forall m \in \Sigma^*, \quad \operatorname{Reconstruct}(\operatorname{Decompose}(m)) \equiv m$$
-//    Guaranteeing zero data loss and absolute mathematical invertibility.
-// ==============================================================================
+// =============================================================================
+//  file : src/Razobill.cpp
+//  role : analytical database control plane and relational schema orchestrator
+//  inv  : RzJoin(RzSplit(x)) == x; exact lossless decomp; atomic transactions
+// =============================================================================
+
+/// analytical database control plane coordinating DuckDB and ClickHouse engines
+///
+/// coordinates relational storage engines across two primary deployment modes:
+/// 1. additive indexing layout (`logs`): preserves raw text in-place while
+///    indexing each record with a 64-bit form_id (xxHash64, seed 0)
+/// 2. compact columnar layout (`logs_c`): decomposes messages into typed slots
+///    (form_no, i0..i{ki-1}, d0..d{ks-1}, oi, os) and synthesizes an exact
+///    reconstruction view satisfying RzJoin(RzSplit(x)) == x
 
 #include "librazobill/Razobill.hpp"
 
@@ -45,8 +28,18 @@ namespace razobill {
 
 namespace {
 
+// -- transaction and identifier safety helpers --------------------------------
+
+/// scoped raii transaction guard for engines supporting multi-statement acid
+///
+/// inv     commits explicitly or executes rollback on scope exit if active
+/// in      db must be connected; active only when flavor is Flavor::DuckDB
+/// own     borrows backend reference db_
+/// thread  not thread-safe; operates on caller's connection
+/// err     suppresses rollback exceptions during stack unwinding
 class TransactionGuard {
 public:
+    // ~ clickhouse adbc has no multi-statement acid, so guard stays dormant
     explicit TransactionGuard(Backend& db, Flavor flavor) : db_(db), active_(flavor == Flavor::DuckDB) {
         if (active_) {
             try {
@@ -58,6 +51,7 @@ public:
         }
     }
 
+    /// commits active transaction and marks guard inert
     void commit() {
         if (active_ && !committed_) {
             db_.exec("COMMIT");
@@ -65,12 +59,13 @@ public:
         }
     }
 
+    /// rolls back uncommitted transaction on scope exit
     ~TransactionGuard() {
         if (active_ && !committed_) {
             try {
                 db_.exec("ROLLBACK");
             } catch (...) {
-                (void)0; // Explicitly suppress rollback errors during exception unwinding
+                (void)0; // explicitly suppress rollback errors during exception unwinding
             }
         }
     }
@@ -86,16 +81,21 @@ private:
     bool committed_ = false;
 };
 
-// SQL Injection Defense-in-Depth (F-SQL-01, F-ENGINE-03):
-// Identifiers are restricted to ASCII alphanumeric and underscores [A-Za-z_][A-Za-z0-9_]{0,63}
-// with a non-digit first character, preventing SQL injection even before quoteIdentifier()
-// applies ANSI SQL standard double-quote escaping.
+/// validates sql table or column identifier to prevent injection
+///
+/// inv     matches [A-Za-z_][A-Za-z0-9_]{0,63}; first character cannot be digit
+/// in      s non-empty identifier up to 64 bytes; what names diagnostic field
+/// err     throws std::invalid_argument on syntax violation
 void requireIdentifier(const std::string& s, const char* what) {
     const bool ok = !s.empty() && s.size() <= 64 && (std::isalpha(static_cast<unsigned char>(s[0])) || s[0] == '_') &&
                     std::ranges::all_of(s, [](unsigned char c) { return std::isalnum(c) || c == '_'; });
     if (!ok) throw std::invalid_argument(std::string(what) + " must match [A-Za-z_][A-Za-z0-9_]{0,63}: '" + s + "'");
 }
 
+/// quotes identifier using ansi sql standard double-quote escaping
+///
+/// in      name identifier string view
+/// out     allocated string wrapped in quotes with internal quotes doubled
 std::string quoteIdentifier(std::string_view name) {
     std::string s;
     s.reserve(name.size() + 4);
@@ -108,12 +108,21 @@ std::string quoteIdentifier(std::string_view name) {
     return s;
 }
 
+/// validates semantic meaning name format
+///
+/// inv     matches [A-Za-z0-9_.-]{1,128}
+/// in      s non-empty string up to 128 characters
+/// err     throws std::invalid_argument on syntax violation
 void requireName(const std::string& s) {
     if (s.empty() || s.size() > 128 ||
         !std::ranges::all_of(s, [](unsigned char c) { return std::isalnum(c) || c == '_' || c == '.' || c == '-'; }))
         throw std::invalid_argument("meaning must match [A-Za-z0-9_.-]{1,128}: '" + s + "'");
 }
 
+/// serializes floating-point number preserving full ieee-754 precision
+///
+/// in      finite double-precision value
+/// out     string with 17 decimal digits of precision
 std::string num(double d) {
     std::ostringstream o;
     o.precision(17);
@@ -121,6 +130,12 @@ std::string num(double d) {
     return o.str();
 }
 
+/// checks whether candidate column name collides with internal engine slots
+///
+/// inv     prevents user columns from shadowing form_no, form_id, oi, os,
+///         rbf, rbi, rbs, rb_*, i<digits>, or d<digits>
+/// in      c column name to validate
+/// out     true if name is reserved for engine decomposition
 bool reservedColumn(std::string_view c) {
     if (c == "form_no" || c == "form_id" || c == "oi" || c == "os" || c == "rbf" || c == "rbi" || c == "rbs") {
         return true;
@@ -139,11 +154,17 @@ bool reservedColumn(std::string_view c) {
     return false;
 }
 
+/// maps distinct string values to contiguous zero-based 32-bit integer ids
+///
+/// inv     idempotent: identical strings receive identical ids
+/// own     retains copies of interned strings in internal map
 class Interner {
 public:
+    /// returns existing id or interns s with next available sequential id
     std::uint32_t operator()(const std::string& s) {
         return ids_.try_emplace(s, static_cast<std::uint32_t>(ids_.size())).first->second;
     }
+    /// view of interned string-to-id dictionary
     [[nodiscard]] const std::unordered_map<std::string, std::uint32_t>& map() const { return ids_; }
 
 private:
@@ -152,6 +173,14 @@ private:
 
 } // namespace
 
+// -- engine lifecycle and catalog detection -----------------------------------
+
+/// constructs engine control plane and attaches to target table
+///
+/// in      backend database connection; config specifying table and parameters
+/// own     borrows backend reference; initializes dialect strategy
+/// thread  acquires mu_ during catalog initialization
+/// err     throws std::invalid_argument if table, column, tau, or eps invalid
 RazobillEngine::RazobillEngine(Backend& backend, Config config) : db_(backend), cfg_(std::move(config)) {
     if (!cfg_.message_column.empty() && (cfg_.messageColumn.empty() || cfg_.messageColumn == "msg")) {
         cfg_.messageColumn = cfg_.message_column;
@@ -175,6 +204,10 @@ RazobillEngine::RazobillEngine(Backend& backend, Config config) : db_(backend), 
     detectLocked();
 }
 
+/// probes database catalog to detect existing table layout and form collisions
+///
+/// inv     caller must hold mu_
+/// thread  guarded by mu_
 void RazobillEngine::detectLocked() {
     const auto& d = *dx_;
     const std::string t = cfg_.table;
@@ -203,15 +236,24 @@ void RazobillEngine::detectLocked() {
                 hasCollision_ = true;
             }
         } catch (const std::exception&) { // NOLINT(bugprone-empty-catch)
-            // Table rb_form may not exist yet prior to installLocked(); safe to ignore
+            // rb_form may not exist yet prior to installLocked; safe to ignore
         }
     }
 }
 
+/// verifies that target table has been indexed or compacted before querying
+///
+/// inv     caller must hold mu_
+/// thread  guarded by mu_
+/// err     throws std::logic_error if table is unindexed and uncompacted
 void RazobillEngine::requireReadyLocked() const {
     if (!ready_) throw std::logic_error("no stored events for '" + cfg_.table + "': call refresh() or compact() first");
 }
 
+/// creates internal metadata tables rb_form, rb_event, rb_meta, and rb_doubt
+///
+/// inv     caller must hold mu_; tables created idempotently with if not exists
+/// thread  guarded by mu_
 void RazobillEngine::installLocked() {
     const auto& d = *dx_;
     db_.exec("CREATE TABLE IF NOT EXISTS rb_form(id " + d.tU64() + ", no " + d.tI32() + ", form " + d.tStr() +
@@ -224,13 +266,18 @@ void RazobillEngine::installLocked() {
     if (db_.query("SELECT count(*) FROM rb_meta").i64(0, 0) == 0) db_.exec("INSERT INTO rb_meta VALUES (0)");
 }
 
+/// extracts unique log forms from query and registers them in rb_form
+///
+/// inv     each distinct form receives 64-bit xxHash64 id and dense 32-bit no;
+///         detects 64-bit hash collisions and switches engine to dense form_no
+/// in      selectForms subquery returning column named form
+/// out     count of newly inserted forms
+/// thread  guarded by mu_
 std::size_t RazobillEngine::registerFormsLocked(const std::string& selectForms) {
     const auto& d = *dx_;
     const auto before = db_.query("SELECT count(*) FROM rb_form").i64(0, 0);
-    // DESIGN DECISION (F-MEM-10):
-    // Sequential form IDs (`no`) use 32-bit signed integers (`tI32()`), allowing up to 2,147,483,647
-    // distinct log forms. For analytical workloads this bound is never exceeded, while
-    // 32-bit integer IDs keep compact column storage and in-memory indexes cache-efficient.
+    // sequential form numbers use signed 32-bit ints; 2 billion forms exceeds
+    // log corpus needs while halving foreign key footprint in columnar storage
     db_.exec("INSERT INTO rb_form SELECT " + d.hashExpr("form") +
              ", CAST((SELECT count(*) FROM rb_form) + row_number() OVER (ORDER BY form) - 1 AS " + d.tI32() +
              "), form, " + d.templateExpr("form") + " FROM (SELECT DISTINCT form FROM (" + selectForms +
@@ -238,16 +285,29 @@ std::size_t RazobillEngine::registerFormsLocked(const std::string& selectForms) 
     const auto collisionCount =
         db_.query("SELECT count(*) FROM (SELECT id FROM rb_form GROUP BY id HAVING count(*) > 1)").i64(0, 0);
     if (collisionCount != 0) {
-        // Disambiguate 64-bit hash collision via dense 32-bit `no` foreign key (F-CONC-03)
+        // 64-bit collision detected; fall back to dense 32-bit sequential keys
         hasCollision_ = true;
     }
     return static_cast<std::size_t>(db_.query("SELECT count(*) FROM rb_form").i64(0, 0) - before);
 }
 
+/// resolves physical foreign key column name based on layout and collisions
+///
+/// inv     caller must hold mu_
+/// out     "form_no" when compact, dense key, or collision; else "form_id"
+/// thread  guarded by mu_
 std::string_view RazobillEngine::physKeyLocked() const {
     return compact_ || dx_->denseFormKey() || hasCollision_ ? "form_no" : "form_id";
 }
 
+// -- indexing, compaction, and verification -----------------------------------
+
+/// indexes unindexed log lines in additive mode without moving raw text bytes
+///
+/// inv     preserves raw text in-place; assigns form_no or form_id
+/// out     count of newly registered unique forms
+/// thread  acquires mu_
+/// err     propagates backend sql execution errors
 std::size_t RazobillEngine::refresh() {
     std::scoped_lock lock(mu_);
     const auto& d = *dx_;
@@ -280,6 +340,15 @@ std::size_t RazobillEngine::refresh() {
     return added;
 }
 
+/// decomposes source table into typed columnar slots and reconstruction view
+///
+/// inv     exact lossless invertibility: RzJoin(RzSplit(m)) == m for every row;
+///         pins law join(split(x)) == x in test/integration/test_compact.py
+/// in      src source table containing messageColumn and sidecar columns
+/// out     total event count in newly created compact physical table
+/// thread  acquires mu_
+/// err     throws std::logic_error if dialect lacks compact support;
+///         throws std::invalid_argument if src lacks messageColumn or reserved
 std::uint64_t RazobillEngine::compact(const std::string& src) {
     std::scoped_lock lock(mu_);
     const auto& d = *dx_;
@@ -316,6 +385,8 @@ std::uint64_t RazobillEngine::compact(const std::string& src) {
              "rz_parsed.template AS rbf, rz_parsed.ints AS rbi, rz_parsed.strs AS rbs FROM parsed");
     db_.exec("CREATE TABLE IF NOT EXISTS rb_str(id INTEGER, s VARCHAR)");
     db_.exec("CREATE TABLE IF NOT EXISTS rb_layout(ki INTEGER, ks INTEGER)");
+    // compute 99th percentile variable counts capped at 32 to size slot schema
+    // ~ quantile 0.99 caps outliers so 50-variable lines do not widen table
     if (db_.query("SELECT count(*) FROM rb_layout").i64(0, 0) == 0)
         db_.exec("INSERT INTO rb_layout SELECT CAST(least(coalesce(quantile_disc(len(rbi), 0.99), 0), 32) AS INTEGER), "
                  "CAST(least(coalesce(quantile_disc(len(rbs), 0.99), 0), 32) AS INTEGER) FROM rb_s");
@@ -355,6 +426,7 @@ std::uint64_t RazobillEngine::compact(const std::string& src) {
         joins +=
             " LEFT JOIN rb_str d" + std::to_string(j) + " ON d" + std::to_string(j) + ".id = c.d" + std::to_string(j);
     }
+    // reconstructs original message byte-for-byte from slots and dictionary
     db_.exec("CREATE OR REPLACE VIEW " + name + " AS SELECT " + list("c.") + "c.form_no, RzJoin(f.form, " + ivs + svs +
              "c.oi, c.os) AS " + m + " FROM " + dst + " c LEFT JOIN rb_form f ON f.no = c.form_no" + joins);
     phys_ = dst;
@@ -367,6 +439,14 @@ std::uint64_t RazobillEngine::compact(const std::string& src) {
     return static_cast<std::uint64_t>(db_.query("SELECT count(*) FROM " + dst).i64(0, 0));
 }
 
+/// performs bidirectional symmetric difference check between source and view
+///
+/// inv     returns 0 if and only if view matches source byte-for-byte;
+///         verifies (src EXCEPT ALL view) + (view EXCEPT ALL src) == 0
+/// in      src table containing original uncompacted events
+/// out     number of mismatched or missing rows across all columns
+/// thread  acquires mu_
+/// err     throws std::logic_error if not in compact mode
 std::uint64_t RazobillEngine::verify(const std::string& src) {
     std::scoped_lock lock(mu_);
     requireIdentifier(src, "source table");
@@ -383,6 +463,14 @@ std::uint64_t RazobillEngine::verify(const std::string& src) {
                                           .i64(0, 0));
 }
 
+// -- dictionary maintenance and garbage collection ----------------------------
+
+/// purges unreferenced string dictionary entries from rb_str
+///
+/// inv     leaves referenced strings intact; preserves ids of active entries
+/// out     DictionaryStats reporting entries before, after, and purged count
+/// thread  acquires mu_
+/// err     throws std::logic_error if not in compact mode
 DictionaryStats RazobillEngine::gcDictionary() {
     std::scoped_lock lock(mu_);
     requireReadyLocked();
@@ -425,6 +513,11 @@ DictionaryStats RazobillEngine::gcDictionary() {
     return res;
 }
 
+/// renumbers sparse string dictionary ids in rb_str to contiguous [0, count-1]
+///
+/// inv     rewrites keys d0..d{ks-1} in compact physical table atomically
+/// thread  acquires mu_
+/// err     throws std::logic_error if not in compact mode
 void RazobillEngine::compactDictionary() {
     std::scoped_lock lock(mu_);
     requireReadyLocked();
@@ -463,6 +556,12 @@ void RazobillEngine::compactDictionary() {
     tx.commit();
 }
 
+// -- semantic views, rule evaluation, and doubt -------------------------------
+
+/// constructs analytical view <table_name>_m joining logs with form and doubt
+///
+/// inv     caller must hold mu_
+/// thread  guarded by mu_
 void RazobillEngine::createViewsLocked() {
     const std::string join =
         compact_ || dx_->denseFormKey() || hasCollision_
@@ -473,6 +572,12 @@ void RazobillEngine::createViewsLocked() {
              join);
 }
 
+/// replays rb_event log up to version to compute active semantic rule set
+///
+/// inv     caller must hold mu_; retire events purge matching previous rules
+/// in      version upper bound event version to evaluate
+/// out     vector of active classification rules with pattern and weight
+/// thread  guarded by mu_
 std::vector<RazobillEngine::Rule> RazobillEngine::activeRulesLocked(int version) {
     const auto ev = db_.query(
         "SELECT kind, meaning, pattern, weight FROM rb_event WHERE v <= " + std::to_string(version) + " ORDER BY v");
@@ -488,6 +593,13 @@ std::vector<RazobillEngine::Rule> RazobillEngine::activeRulesLocked(int version)
     return rules;
 }
 
+/// matches active rules against template dictionary to compute posterior P(W|F)
+///
+/// inv     weights normalized per form so sum of P(W|F) equals 1.0
+/// in      rules active semantic classification rules
+/// out     vector of FormP tuples (form_id, meaning, normalized probability)
+/// thread  guarded by mu_
+/// err     throws std::invalid_argument if regex pattern fails engine syntax
 std::vector<RazobillEngine::FormP> RazobillEngine::resolveLocked(const std::vector<Rule>& rules) {
     std::map<std::pair<std::uint64_t, std::string>, double> w;
     std::map<std::uint64_t, double> total;
@@ -511,6 +623,11 @@ std::vector<RazobillEngine::FormP> RazobillEngine::resolveLocked(const std::vect
     return out;
 }
 
+/// recalculates rb_doubt table containing maximum posterior meaning and entropy
+///
+/// inv     caller must hold mu_; assigns meaning if pmax >= tau, else null;
+///         doubt H(W|F) is computed as Shannon entropy in bits
+/// thread  guarded by mu_
 void RazobillEngine::rebuildDerivedLocked() {
     const auto map = resolveLocked(activeRulesLocked(static_cast<int>(db_.query("SELECT v FROM rb_meta").i64(0, 0))));
     struct Row {
@@ -543,6 +660,15 @@ void RazobillEngine::rebuildDerivedLocked() {
     flush();
 }
 
+// -- semantic rule administration and gating ----------------------------------
+
+/// computes joint empirical event count per form and purpose column value
+///
+/// inv     caller must hold mu_; purpose strings interned into 32-bit ids
+/// in      yids output map receiving interned purpose string-to-id mapping
+/// out     vector of XY tuples (form, interned purpose y, event count n)
+/// thread  guarded by mu_
+/// err     throws std::length_error if distinct pairs exceed kMaxXyRows (5M)
 std::vector<stats::XY> RazobillEngine::xyLocked(std::unordered_map<std::string, std::uint32_t>& yids) {
     const auto& d = *dx_;
     const std::string y = cfg_.purpose.empty() ? "'-'" : d.toText("e." + cfg_.purpose);
@@ -555,6 +681,7 @@ std::vector<stats::XY> RazobillEngine::xyLocked(std::unordered_map<std::string, 
               " e WHERE e.form_id IS NOT NULL GROUP BY e.form_id, yv";
     const auto t = db_.query(sql);
     constexpr std::size_t kMaxXyRows = 5'000'000;
+    // ~ 5 million pairs is 120mb before the interner even stretches
     if (t.rows.size() > kMaxXyRows) throw std::length_error("purpose column has too many distinct values per form");
     Interner in;
     std::vector<stats::XY> out;
@@ -569,10 +696,26 @@ std::vector<stats::XY> RazobillEngine::xyLocked(std::unordered_map<std::string, 
     return out;
 }
 
+/// queries total event count in physical table
+///
+/// inv     caller must hold mu_
+/// out     total event count as floating-point value
+/// thread  guarded by mu_
 double RazobillEngine::totalEventsLocked() {
     return static_cast<double>(db_.query("SELECT count(*) FROM " + phys_).i64(0, 0));
 }
 
+/// registers semantic classification rule subject to information loss gate
+///
+/// inv     docs/explanation/latitude-and-doubt.md theorem 4: candidate rule
+///         admitted only if volume-weighted JSD <= eps or forced;
+///         guarantees information leakage I(F;Y|W) remains bounded
+/// in      meaning semantic label; pattern regex; weight positive finite;
+///         force bypasses gate check
+/// out     Defined record with version, affected forms, and Jensen-Shannon loss
+/// thread  acquires mu_
+/// err     throws std::invalid_argument if invalid or purpose undeclared;
+///         throws GateRefused if information loss exceeds eps without force
 Defined RazobillEngine::define(const std::string& meaning, const std::string& pattern, double weight, bool force) {
     std::scoped_lock lock(mu_);
     requireName(meaning);
@@ -591,11 +734,8 @@ Defined RazobillEngine::define(const std::string& meaning, const std::string& pa
     std::unordered_map<std::string, std::uint32_t> yids;
     const auto xy = xyLocked(yids);
 
-    // SEMANTIC GATING IN ACTION (Theorem 4 in "Latitude and Doubt", M. M. Atta, 2026):
-    // The gate protects the semantic ledger from lossy over-clustering.
-    // If a candidate rule attempts to merge forms that carry distinct diagnostic signals about `purpose`,
-    // the volume-weighted Jensen-Shannon divergence exceeds `cfg_.eps` (default 0.05 bits).
-    // The gate rejects the merge to prevent information leakage I(X;Y|W) > 0.
+    // docs/explanation/latitude-and-doubt.md theorem 4: semantic gate protects
+    // against lossy over-clustering by rejecting merges with jsd > eps
     const auto cost = stats::mergeCost(xy, merged, totalEventsLocked());
     if (cost.jsd > cfg_.eps && !force) {
         std::ostringstream o;
@@ -620,6 +760,13 @@ Defined RazobillEngine::define(const std::string& meaning, const std::string& pa
     return res;
 }
 
+/// appends retire event for specified meaning and updates derived views
+///
+/// inv     appends version event to rb_event; removes meaning from views
+/// in      meaning active semantic label to retire
+/// out     new metadata version number
+/// thread  acquires mu_
+/// err     throws std::invalid_argument if meaning is invalid or not active
 int RazobillEngine::retire(const std::string& meaning) {
     std::scoped_lock lock(mu_);
     requireName(meaning);
@@ -639,6 +786,12 @@ int RazobillEngine::retire(const std::string& meaning) {
     return v;
 }
 
+/// rewinds or advances semantic metadata to a specific historical version
+///
+/// inv     updates rb_meta version and rebuilds rb_doubt derived state
+/// in      version target version in range [0, latest]
+/// thread  acquires mu_
+/// err     throws std::invalid_argument if version < 0 or exceeds latest
 void RazobillEngine::pin(int version) {
     std::scoped_lock lock(mu_);
     const int latest = static_cast<int>(db_.query("SELECT coalesce(max(v), 0) FROM rb_event").i64(0, 0));
@@ -650,11 +803,25 @@ void RazobillEngine::pin(int version) {
     tx.commit();
 }
 
+/// retrieves currently active semantic metadata version number
+///
+/// out     integer version from rb_meta
+/// thread  acquires mu_
 int RazobillEngine::version() {
     std::scoped_lock lock(mu_);
     return static_cast<int>(db_.query("SELECT v FROM rb_meta").i64(0, 0));
 }
 
+// -- information metrics, inspection, and prioritization ----------------------
+
+/// computes exact Shannon entropy decomposition across forms and meanings
+///
+/// inv     satisfies laws from docs/explanation/latitude-and-doubt.md:
+///         H(F) = I(F;W) + H(F|W) (expression = conveyance + latitude)
+///         H(W) = I(F;W) + H(W|F) (content = conveyance + doubt)
+/// out     Ledger with expression, conveyance, latitude, content, and doubt
+/// thread  acquires mu_
+/// err     throws std::logic_error if conservation violated by > 1e-9 bits
 stats::Ledger RazobillEngine::ledger() {
     std::scoped_lock lock(mu_);
     requireReadyLocked();
@@ -676,6 +843,11 @@ stats::Ledger RazobillEngine::ledger() {
     return l;
 }
 
+/// measures residual mutual information I(F;Y|W) between forms and purpose
+///
+/// inv     leakage == 0 indicates zero-loss semantic compression for purpose
+/// out     conditional mutual information in bits per event
+/// thread  acquires mu_
 double RazobillEngine::leakage() {
     std::scoped_lock lock(mu_);
     requireReadyLocked();
@@ -690,6 +862,13 @@ double RazobillEngine::leakage() {
     return stats::leakage(xy, fm);
 }
 
+/// parses single log line and retrieves its assigned meaning and doubt score
+///
+/// inv     exact parsing via core::parse; hashes template with xxHash64
+/// in      text raw log message line
+/// out     MeaningOf with formId, meaning, and doubt; nullopt if unknown form
+/// thread  acquires mu_
+/// err     throws std::invalid_argument if message fails parser validation
 std::optional<MeaningOf> RazobillEngine::meaningOf(const std::string& text) {
     core::SlotRecord slots;
     if (const auto s = core::parse(text, slots, cfg_.scanMode); s != Status::Ok)
@@ -706,6 +885,11 @@ std::optional<MeaningOf> RazobillEngine::meaningOf(const std::string& text) {
     return out;
 }
 
+/// ranks unclassified log templates by event frequency to guide rule definition
+///
+/// in      n maximum number of unclassified templates to return
+/// out     pairs of (template_string, count) sorted descending by frequency
+/// thread  acquires mu_
 std::vector<std::pair<std::string, std::int64_t>> RazobillEngine::todo(std::size_t n) {
     std::scoped_lock lock(mu_);
     requireReadyLocked();

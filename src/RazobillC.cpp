@@ -1,6 +1,8 @@
-// ==============================================================================
-// Razobill Universal C ABI Implementation (Unified CamelCase Rz API)
-// ==============================================================================
+// =============================================================================
+//  file : src/RazobillC.cpp
+//  role : universal c abi implementation wrapping core c++ engine
+//  inv  : catches all exceptions at boundary; never leaks c++ types across abi
+// =============================================================================
 
 #include "librazobill/RazobillC.h"
 #include "librazobill/Slots.hpp"
@@ -16,6 +18,10 @@
 
 namespace {
 
+// -- internal allocation container --------------------------------------------
+
+// backing container pinned on heap to back RzRecord pointer arrays for C
+// ~ two parallel vectors just to give C callers contiguous array storage
 struct InternalRecord {
     razobill::core::SlotRecord slots;
     std::vector<const char*> strPointers;
@@ -24,8 +30,17 @@ struct InternalRecord {
 
 } // namespace
 
+// -- exported c abi functions -------------------------------------------------
+
 extern "C" {
 
+/// split log line into template, integers, and string slices
+/// inv: exact lossless invertibility: RzJoin(RzSplit(x)) == x
+/// in: message non-null buffer unless messageLength is 0; outRecord non-null
+/// out: outRecord populated with pointers into message and internalHandle
+/// own: outRecord->internalHandle owned by record; freed by RzFree
+/// thread: pure, thread-safe, no shared state
+/// err: returns RzStatus code; converts C++ exceptions at ABI boundary
 RZ_API RzStatus RzSplit(const char* message, size_t messageLength, RzRecord* outRecord) {
     if (!outRecord) return RZ_ERR_INVALID_ARGUMENT;
     if (!message && messageLength > 0) return RZ_ERR_INVALID_ARGUMENT;
@@ -76,6 +91,13 @@ RZ_API RzStatus RzSplit(const char* message, size_t messageLength, RzRecord* out
     }
 }
 
+/// reconstruct original log line from template and slot values
+/// inv: exact byte-for-byte reconstruction: RzJoin(RzSplit(x)) == x
+/// in: record non-null parsed record; outBuffer buffer or nullptr for sizing
+/// out: outBuffer populated with bytes; outLength receives required byte size
+/// own: borrows record pointers; caller owns outBuffer
+/// thread: pure, thread-safe, no shared state
+/// err: returns RZ_ERR_BUFFER_TOO_SMALL if capacity insufficient
 RZ_API RzStatus RzJoin(const RzRecord* record, char* outBuffer, size_t bufferCapacity, size_t* outLength) {
     if (!record) return RZ_ERR_INVALID_ARGUMENT;
     if (!record->templateStr && record->templateLength > 0) return RZ_ERR_INVALID_ARGUMENT;
@@ -126,6 +148,11 @@ RZ_API RzStatus RzJoin(const RzRecord* record, char* outBuffer, size_t bufferCap
     }
 }
 
+/// extract display template directly from raw message without allocating slots
+/// in: message raw input buffer; outBuffer destination buffer
+/// out: outBuffer populated with template bytes; outLength receives byte size
+/// thread: pure, thread-safe, no shared state
+/// err: returns RZ_ERR_BUFFER_TOO_SMALL if capacity is insufficient
 RZ_API RzStatus RzTemplate(const char* message, size_t messageLength, char* outBuffer, size_t bufferCapacity,
                            size_t* outLength) {
     if (!message && messageLength > 0) return RZ_ERR_INVALID_ARGUMENT;
@@ -163,6 +190,11 @@ RZ_API RzStatus RzTemplate(const char* message, size_t messageLength, char* outB
     }
 }
 
+/// release heap resources allocated during RzSplit
+/// inv: safe to call with nullptr; zeroes record upon deallocation
+/// in: record pointer to RzRecord previously populated by RzSplit
+/// thread: thread-safe for distinct records
+/// err: noexcept
 RZ_API void RzFree(RzRecord* record) {
     if (!record) return;
     if (record->internalHandle) {
@@ -172,6 +204,11 @@ RZ_API void RzFree(RzRecord* record) {
     std::memset(record, 0, sizeof(RzRecord));
 }
 
+/// return static human-readable description for an RzStatus code
+/// in: status error code
+/// out: static null-terminated error string
+/// own: static storage; caller must not free
+/// thread: pure, thread-safe, noexcept
 RZ_API const char* RzStatusMessage(RzStatus status) {
     switch (status) {
     case RZ_OK:
@@ -195,10 +232,17 @@ RZ_API const char* RzStatusMessage(RzStatus status) {
     }
 }
 
+/// return semantic library version string
+/// out: static null-terminated version string
+/// own: static storage; caller must not free
+/// thread: pure, thread-safe, noexcept
 RZ_API const char* RzVersion(void) {
     return LIBRAZOBILL_VERSION_STRING;
 }
 
+/// return integer ABI version number
+/// out: ABI version number matching RZ_ABI_VERSION
+/// thread: pure, thread-safe, noexcept
 RZ_API int RzAbiVersion(void) {
     return RZ_ABI_VERSION;
 }

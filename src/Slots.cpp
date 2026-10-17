@@ -1,6 +1,10 @@
-// ==============================================================================
-// Razobill Zero-Copy Data Plane: Fast Slot Decomposition & Reconstruction
-// ==============================================================================
+// =============================================================================
+//  file : src/Slots.cpp
+//  role : fast zero-copy slot decomposition and byte-exact reconstruction
+//  inv  : reconstruct(tmpl, ints, strs, out) restores msg byte for byte
+//  deps : "librazobill/Slots.hpp", <charconv>
+//  ~    : two passes over memory because cache misses hurt worse than scanning
+// =============================================================================
 
 #include "librazobill/Slots.hpp"
 
@@ -10,6 +14,13 @@ namespace razobill::core {
 
 namespace {
 
+/// branch table calculating exact decimal digit length for a 64-bit integer
+/// inv: returns exact number of ASCII characters required by std::to_chars
+/// in: v in [INT64_MIN, INT64_MAX]
+/// out: character count in [1, 20] plus 1 for sign if negative
+/// thread: pure constexpr, noexcept
+// branch cascade avoids hardware integer division latency on the hot path
+// ~ nineteen comparisons beating division on every single slot
 constexpr std::size_t digits10(std::int64_t v) noexcept {
     const std::size_t sign = (v < 0) ? 1 : 0;
     const uint64_t u = (v < 0) ? static_cast<uint64_t>(-(v + 1)) + 1 : static_cast<uint64_t>(v);
@@ -35,6 +46,9 @@ constexpr std::size_t digits10(std::int64_t v) noexcept {
     return 20 + sign;
 }
 
+/// detects whether form string uses legacy skeleton and type suffix encoding
+/// in: form is raw form key representation
+/// out: true if legacy wire format (placeholder byte 0x11 and type separator 0x12)
 bool isLegacyFormKey(std::string_view form) noexcept {
     if (form.find("{i}") != std::string_view::npos || form.find("{s}") != std::string_view::npos ||
         form.find("{{") != std::string_view::npos || form.find("}}") != std::string_view::npos) {
@@ -57,6 +71,10 @@ bool isLegacyFormKey(std::string_view form) noexcept {
     return placeholders > 0 && placeholders == types.size();
 }
 
+/// separates legacy form key into skeleton, type tags, and slot counts
+/// in: form contains single kTypeSeparator byte followed by 'I' and 'S' tags
+/// out: skeleton and types string_views; nInt and nStr slot counts
+/// err: returns Status::Malformed if separator missing or tags invalid
 Status splitKey(std::string_view form, std::string_view& skeleton, std::string_view& types, std::size_t& nInt,
                 std::size_t& nStr) noexcept {
     const auto sep = form.rfind(static_cast<char>(kTypeSeparator));
@@ -78,6 +96,11 @@ Status splitKey(std::string_view form, std::string_view& skeleton, std::string_v
     return holes == types.size() ? Status::Ok : Status::Malformed;
 }
 
+/// reconstructs original message from legacy skeleton and slot vectors
+/// inv: exact byte restoration under legacy 0x11/0x12 wire format
+/// in: form, ints, strs
+/// out: out buffer receives reconstructed message
+/// err: returns Status::SlotUnderflow, Status::SlotOverflow, or Status::Malformed
 Status reconstructLegacy(std::string_view form, std::span<const std::int64_t> ints,
                          std::span<const std::string_view> strs, std::string& out) {
     std::string_view skeleton;
@@ -122,13 +145,19 @@ Status reconstructLegacy(std::string_view form, std::span<const std::int64_t> in
     return Status::Ok;
 }
 
+// -- two-pass reconstruction and validation -----------------------------------
+
+/// two-pass message reconstruction from template and typed slot vectors
+/// inv: byte-for-byte exact restoration of original input
+/// in: tmpl with {i} and {s} placeholders; ints non-negative 64-bit values; strs views
+/// out: out string populated with reconstructed payload
+/// own: out buffer allocated once to exact size; ints and strs borrowed
+/// thread: reentrant, zero shared state
+/// err: returns Status::SlotUnderflow, Status::SlotOverflow, Status::TooLarge, Status::Malformed
 Status reconstructNew(std::string_view tmpl, std::span<const std::int64_t> ints, std::span<const std::string_view> strs,
                       std::string& out) {
-    // DESIGN DECISION (F-SLOT-02):
-    // Two-pass reconstruction: Pass 1 calculates the exact output byte size (`estSize`),
-    // checks slot underflow/overflow invariants, and prevents buffer reallocation.
-    // Pass 2 formats integers and copies string slices directly into the pre-reserved buffer.
-    // This eliminates intermediate reallocations and guarantees O(N) allocation determinism.
+    // two-pass sizing prevents reallocations and verifies slot counts before writing
+    // ~ measuring twice and allocating once keeps the hot path allocator-free
     const char* p = tmpl.data();
     const char* const end = p + tmpl.size();
     std::size_t nInt = 0;
@@ -227,6 +256,15 @@ Status reconstructNew(std::string_view tmpl, std::span<const std::int64_t> ints,
 
 } // namespace
 
+// -- slot parsing and template extraction -------------------------------------
+
+/// scans raw log message and extracts template skeleton, 64-bit integers, and strings
+/// inv: join(split(msg)) == msg for all valid messages
+/// in: msg byte view, mode ScanMode::DigitOnly or ScanMode::Semantic
+/// out: out populated with templateStr, ints, and string slices
+/// own: out.strs elements borrow directly from msg memory
+/// thread: reentrant
+/// err: returns Status::TooLarge if msg.size() > kMaxMessageBytes (16 MiB)
 Status parse(std::string_view msg, SlotRecord& out, ScanMode mode) {
     out.clear();
     if (msg.size() > kMaxMessageBytes) [[unlikely]]
@@ -247,6 +285,7 @@ Status parse(std::string_view msg, SlotRecord& out, ScanMode mode) {
                 else
                     out.templateStr.push_back(c);
             }
+            // numbers with leading zeros (e.g. "007") stay strings to prevent byte loss
             if (isIntToken(tok)) {
                 std::int64_t v = 0;
                 std::from_chars(tok.data(), tok.data() + tok.size(), v);
@@ -271,10 +310,8 @@ Status parse(std::string_view msg, SlotRecord& out, ScanMode mode) {
             out.templateStr.push_back(c);
     }
 
+    // control characters 0x11..0x13 in payload invalidate legacy wire format
     if (result.reserved) {
-        // When message contains internal framing control characters (0x11..0x13),
-        // legacy skeleton encoding is ambiguous under the legacy wire format.
-        // Invalidate legacy skeleton/types to mandate modern templateStr format.
         out.skeleton.clear();
         out.types.clear();
     }
@@ -282,6 +319,11 @@ Status parse(std::string_view msg, SlotRecord& out, ScanMode mode) {
     return Status::Ok;
 }
 
+/// dispatches reconstruction to legacy or modern template decoder
+/// inv: exact lossless invertibility join(split(x)) == x
+/// in: tmpl format key, ints array, strs array
+/// out: out string receives reconstructed bytes
+/// err: returns Status code matching decoder result
 Status reconstruct(std::string_view tmpl, std::span<const std::int64_t> ints, std::span<const std::string_view> strs,
                    std::string& out) {
     if (isLegacyFormKey(tmpl)) {
@@ -290,6 +332,11 @@ Status reconstruct(std::string_view tmpl, std::span<const std::int64_t> ints, st
     return reconstructNew(tmpl, ints, strs, out);
 }
 
+/// converts internal template or legacy form key into human-readable <*> format
+/// inv: replaces {i} and {s} with <*>, unescapes {{ and }} to { and }
+/// in: form template or legacy key
+/// out: out receives normalized template string
+/// err: returns Status::Malformed if syntax is invalid
 Status templateOf(std::string_view form, std::string& out) {
     if (isLegacyFormKey(form)) {
         std::string_view skeleton;

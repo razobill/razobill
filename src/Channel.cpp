@@ -1,21 +1,8 @@
-// ==============================================================================
-// Razobill Latitude Steganographic Channel: Exact Provenance Embedding Engine
-// ==============================================================================
-//
-// THEORETICAL DERIVATION (Atta, 2026):
-// 1. Theorem 8 (Operational Channel Capacity):
-//    In an unambiguous source ($\Delta = 0$), the mean capacity of a message sequence is:
-//    $$\mu = \sum_{i=1}^n H(X_i \mid w_i), \quad \sigma^2 = \sum_{i=1}^n \operatorname{Var}(-\log_2 Q(X_i \mid w_i))$$
-//    Safe payload is bounded by $k = \lfloor \mu - 3\sigma - 7 \rfloor$.
-//
-// 2. Theorem 8 (Analytical Failure Probability):
-//    The exact failure probability $\delta = \sum_{x^n} Q(x^n \mid w^n) \min\{1, 2^k Q(x^n \mid w^n)\}$
-//    is computed via $O(n \cdot M)$ discrete probability mass convolution over log-likelihoods.
-//
-// 3. Proposition 9 (Finite-Precision Grid Length):
-//    The minimum grid parameter required to ensure exact decodability is:
-//    $$P = \left\lceil \sum_{i=1}^n \max_{x \in \mathcal{X}(w_i)} (-\log_2 Q(x \mid w_i)) \right\rceil + s + 1$$
-// ==============================================================================
+// =============================================================================
+//  file : src/Channel.cpp
+//  role : steganographic channel embedding, decoding, and capacity analysis
+//  inv  : exact decodability; provable failure probability bounds
+// =============================================================================
 
 #include "librazobill/Channel.hpp"
 
@@ -26,6 +13,12 @@
 
 namespace razobill::channel {
 
+// -- capacity and error probability analysis ----------------------------------
+
+/// compute operational channel capacity, variance, and safe payload bit budget
+/// in: sequence choices representing conditional form distributions Q(X|W)
+/// out: ChannelCapacity with meanCapacityBits, variance, and safePayloadBits
+/// thread: pure function, noexcept
 ChannelCapacity analyzeCapacity(std::span<const MeaningChoice> sequence) noexcept {
     double mu = 0.0;
     double sigma2 = 0.0;
@@ -60,6 +53,10 @@ ChannelCapacity analyzeCapacity(std::span<const MeaningChoice> sequence) noexcep
     return {.meanCapacityBits = mu, .variance = sigma2, .safePayloadBits = k};
 }
 
+/// compute minimum key bits required for exact decodability on finite grid
+/// in: sequence choices and security parameter s
+/// out: minimum key bit length P
+/// thread: pure function, noexcept
 std::size_t requiredKeyBits(std::span<const MeaningChoice> sequence, std::size_t s) noexcept {
     double sumMaxL = 0.0;
     for (const auto& step : sequence) {
@@ -83,6 +80,10 @@ std::size_t requiredKeyBits(std::span<const MeaningChoice> sequence, std::size_t
     return static_cast<std::size_t>(std::ceil(sumMaxL)) + s + 1;
 }
 
+/// compute Chebyshev upper bound on transmission decoding failure probability
+/// in: capacity channel capacity struct, payloadBits message bits, s security
+/// out: upper bound in [0, 1] on decoding failure probability
+/// thread: pure function, noexcept
 double failureProbabilityBound(const ChannelCapacity& capacity, std::size_t payloadBits, double s) noexcept {
     const double a = capacity.meanCapacityBits - static_cast<double>(payloadBits) - s;
     if (a <= 0.0) return 1.0;
@@ -91,15 +92,11 @@ double failureProbabilityBound(const ChannelCapacity& capacity, std::size_t payl
     return std::min(1.0, std::max(0.0, chebyshev + slack));
 }
 
-// Exact analytical failure probability on discrete distributions via dynamic programming.
-//
-// Quantization & Truncation Bounds (Theorem 8 / Proposition 9):
-// Log-probabilities (-log2 p) are quantized to 0.001-bit resolution (kScale = 1000.0).
-// For any sequence of length L, the maximum cumulative quantization drift is bounded
-// by at most 0.5 * L / kScale bits.
-// State pruning discards low-probability states (mass < 1e-12) once the state space
-// exceeds kMaxDistStates (4096). Pruned mass is strictly accumulated in `prunedMass` and added
-// back to the final error probability, guaranteeing that the returned delta is a rigorous upper bound.
+/// exact failure probability on discrete distributions via dynamic programming
+/// inv: scaled integer bins bound drift; pruned mass added to final bound
+/// in: sequence choices and payloadBits payload bit count
+/// out: exact analytical failure probability bound in [0, 1]
+/// thread: pure function, noexcept
 double exactFailureProbability(std::span<const MeaningChoice> sequence, std::size_t payloadBits) noexcept {
     if (sequence.empty()) return 0.0;
 
@@ -128,6 +125,8 @@ double exactFailureProbability(std::span<const MeaningChoice> sequence, std::siz
                     nextDist[bin + shift] += prob * p;
                 }
             }
+            // prunes tiny probability tails when state space exceeds threshold
+            // ~ pruning states below 1e-12 keeps dynamic programming tractable
             constexpr std::size_t kMaxDistStates = 4096;
             if (nextDist.size() > kMaxDistStates) {
                 for (auto it = nextDist.begin(); it != nextDist.end();) {
@@ -158,6 +157,13 @@ double exactFailureProbability(std::span<const MeaningChoice> sequence, std::siz
     }
 }
 
+// -- arithmetic embedding and decoding ----------------------------------------
+
+/// embed secret message into wording choices using circular arithmetic coding
+/// inv: chosen forms correspond to natural variations preserving meaning
+/// in: sequence wording choices, message integer, payloadBits bits, key, dither
+/// out: EmbedResult containing chosen form indices and success flag
+/// thread: pure function
 EmbedResult embed(std::span<const MeaningChoice> sequence, std::uint64_t message, std::size_t payloadBits,
                   double sharedKey, double dither) {
     EmbedResult res;
@@ -230,6 +236,11 @@ EmbedResult embed(std::span<const MeaningChoice> sequence, std::uint64_t message
     return res;
 }
 
+/// extract embedded message from sequence of observed wording form choices
+/// inv: exact recovery if and only if circular interval does not cross boundary
+/// in: sequence wording choices, observedForms indices, payloadBits, sharedKey
+/// out: DecodeResult with decoded integer and success flag
+/// thread: pure function
 DecodeResult decode(std::span<const MeaningChoice> sequence, std::span<const std::size_t> observedForms,
                     std::size_t payloadBits, double sharedKey) {
     DecodeResult res;
@@ -301,6 +312,7 @@ DecodeResult decode(std::span<const MeaningChoice> sequence, std::span<const std
     const double rightZ = centerZ + halfQ;
 
     // Handle circular modular interval wrap-around on S^1 = [0, 1) modulo 1
+    // ~ modular arithmetic on a circle requires checking cell boundaries at 0 and 1
     const double effectiveLeft = (leftZ < 0.0 && leftZ >= -1e-12) ? 0.0 : leftZ;
     const double effectiveRight = (rightZ >= 1.0 && rightZ <= 1.0 + 1e-12) ? std::nextafter(1.0, 0.0) : rightZ;
 

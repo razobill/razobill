@@ -1,3 +1,9 @@
+// =============================================================================
+//  file : src/BackendAdbc.cpp
+//  role : arrow database connectivity (adbc) dynamic bridge and arrow decoder
+//  inv  : zero-copy arrow buffer decoding; thread-safe connection mutex
+// =============================================================================
+
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -15,16 +21,15 @@
 #include "adbc.h"
 #include "librazobill/Backend.hpp"
 
-// ARCHITECTURE: Arrow Database Connectivity (ADBC) Driver Bridge
-// Why ADBC instead of legacy ODBC or JDBC?
-// ODBC was designed in 1992 for row-oriented RDBMS systems, serializing every column
-// into intermediate character strings and row cursors.
-// ADBC transfers native Apache Arrow columnar record batches directly into memory
-// with zero copy and zero row-by-row serialization overhead.
 namespace razobill {
 
 namespace {
 
+// -- platform dynamic library loader ------------------------------------------
+
+/// dynamically load shared library from filesystem path
+/// in: path library file path, deepbind POSIX deepbind flag, global export
+/// out: OS library handle or nullptr on failure
 void* sysLoadLibrary(const char* path, bool deepbind, bool global) {
 #ifdef _WIN32
     (void)deepbind;
@@ -45,6 +50,7 @@ void* sysLoadLibrary(const char* path, bool deepbind, bool global) {
 #endif
 }
 
+/// unload dynamically loaded shared library handle
 void sysUnloadLibrary(void* handle) {
     if (!handle) return;
 #ifdef _WIN32
@@ -54,6 +60,7 @@ void sysUnloadLibrary(void* handle) {
 #endif
 }
 
+/// resolve exported symbol address from loaded shared library
 void* sysLoadSymbol(void* handle, const char* symbol) {
 #ifdef _WIN32
     return reinterpret_cast<void*>(GetProcAddress(reinterpret_cast<HMODULE>(handle), symbol));
@@ -62,6 +69,7 @@ void* sysLoadSymbol(void* handle, const char* symbol) {
 #endif
 }
 
+/// format OS-specific last dynamic loading error into string
 std::string sysLastError() {
 #ifdef _WIN32
     DWORD err = GetLastError();
@@ -82,6 +90,7 @@ std::string sysLastError() {
 #endif
 }
 
+/// throw BackendError with formatted message and release ADBC error struct
 [[noreturn]] void fail(std::string_view what, AdbcError& e) {
     std::string m(what);
     if (e.message) m += std::string(": ") + e.message;
@@ -91,20 +100,30 @@ std::string sysLastError() {
     throw BackendError(m);
 }
 
+// -- arrow c data interface decoder -------------------------------------------
+
+/// return null bitmap buffer pointer from Arrow array
 const std::uint8_t* validity(const ArrowArray* a) {
     return static_cast<const std::uint8_t*>(a->n_buffers > 0 ? a->buffers[0] : nullptr);
 }
+
+/// test validity bit for row index i; null buffer implies all rows valid
 bool isValid(const ArrowArray* a, std::int64_t i) {
     const auto* v = validity(a);
     const auto k = static_cast<std::uint64_t>(i + a->offset);
     return v == nullptr || (((static_cast<unsigned int>(v[k >> 3U]) >> (k & 7U)) & 1U) != 0U);
 }
 
+/// read scalar value of type T from primary data buffer (buffer index 1)
 template <class T> T at(const ArrowArray* a, std::int64_t i) {
     if (!a || a->n_buffers < 2 || !a->buffers[1]) return T{};
     return static_cast<const T*>(a->buffers[1])[i + a->offset];
 }
 
+/// decode Arrow C Data Interface cell into typed Value variant
+/// in: fmt Arrow format string, a Arrow array pointer, i row index
+/// out: Value holding decoded primitive or monostate if null
+/// err: throws BackendError on malformed or unsupported format codes
 Value decode(const char* fmt, const ArrowArray* a, std::int64_t i) {
     if (!fmt) return std::monostate{};
     if (!std::strcmp(fmt, "n")) return std::monostate{};
@@ -135,6 +154,8 @@ Value decode(const char* fmt, const ArrowArray* a, std::int64_t i) {
         }
         if (bits != 128) throw BackendError(std::string("unsupported decimal width: ") + fmt);
         if (!a || a->n_buffers < 2 || !a->buffers[1]) return 0.0;
+        // converts 128-bit fixed-point arrow decimal into double with 2^64 scaling
+        // ~ manual 2^64 arithmetic because c++20 lacks standard int128_t across all compilers
         const auto* w = static_cast<const std::uint64_t*>(a->buffers[1]) + (2 * (i + a->offset));
         const auto hi = static_cast<std::int64_t>(w[1]);
         double v = 0.0;
@@ -170,6 +191,9 @@ Value decode(const char* fmt, const ArrowArray* a, std::int64_t i) {
     throw BackendError(std::string("unsupported Arrow type in result: ") + fmt + " (cast the column in the query)");
 }
 
+// -- adbc backend implementation ----------------------------------------------
+
+/// dynamic adbc driver backend loading driver shared library at runtime
 class AdbcBackend final : public Backend {
 public:
     AdbcBackend(const AdbcBackend&) = delete;
@@ -177,6 +201,8 @@ public:
     AdbcBackend(AdbcBackend&&) = delete;
     AdbcBackend& operator=(AdbcBackend&&) = delete;
 
+    /// initialize ADBC driver and connection from options struct
+    /// in: o AdbcOptions containing driver path, entrypoint, and options
     explicit AdbcBackend(const AdbcOptions& o) : flavor_(o.flavor) {
         const auto& preloads = !o.preloadGlobal.empty() ? o.preloadGlobal : o.preload_global;
         for (const auto& lib : preloads) {
@@ -209,6 +235,7 @@ public:
             exec(s);
     }
 
+    /// release ADBC connection, database, and dynamic library handles
     ~AdbcBackend() override {
         AdbcError err{};
         if (have_conn_) {
@@ -245,6 +272,7 @@ public:
     }
 
 private:
+    /// execute SQL statement and optionally decode output Arrow batches into Table
     void run(std::string_view sql, Table* out) {
         std::scoped_lock lock(connMutex_);
         AdbcError err{};
@@ -348,6 +376,8 @@ template <class T> const T& get(const Table& t, std::size_t r, std::size_t c, co
 
 } // namespace
 
+// -- table accessors and factory ----------------------------------------------
+
 std::int64_t Table::i64(std::size_t r, std::size_t c) const {
     const auto& v = rows.at(r).at(c);
     if (const auto* p = std::get_if<std::int64_t>(&v)) return *p;
@@ -371,6 +401,7 @@ const std::string& Table::str(std::size_t r, std::size_t c) const {
     return get<std::string>(*this, r, c, "a string");
 }
 
+/// factory function creating ADBC backend driver instance
 std::unique_ptr<Backend> makeAdbcBackend(const AdbcOptions& options) {
     return std::make_unique<AdbcBackend>(options);
 }

@@ -1,42 +1,8 @@
-// ==============================================================================
-// Razobill Information-Theoretic Foundations & Mathematical Accounting Engine
-// ==============================================================================
-//
-// MATHEMATICAL DERIVATIONS & PAPER MAPPING:
-// Implements the complete mathematical framework of "Latitude and Doubt: An exact
-// ledger of meaning in messages" (M. M. Atta, 2026):
-//
-// 1. Theorem 1 (The Fundamental Ledger of Information):
-//    $$E = I(X; W) + \Lambda, \quad C = I(X; W) + \Delta, \quad E - C = \Lambda - \Delta$$
-//    Where $\Lambda \ge 0$ is Latitude (synonymy/redundancy) and $\Delta \ge 0$ is Doubt
-//    (polysemy/underspecification).
-//
-// 2. Theorem 3 (Gate Closed-Form):
-//    $$\Delta I = I(X; Y) - I(W; Y) = \pi_{A \cup B} \cdot \operatorname{JSD}(P_A, P_B)$$
-//    Measures exact mutual information loss incurred by collapsing equivalence classes.
-//
-// 3. Theorem 4c (Consequence Decomposition):
-//    $$E = I(X; Y) + H(M \mid Y) + H(X \mid M)$$
-//    Partitions total emission into operational relevance, consequence hedge, and latitude.
-//
-// 4. Theorem 5 (Semantic Leakage):
-//    $$L_Y(W) = I(X; Y \mid W) = H(Y \mid W) - H(Y \mid X)$$
-//    Measures information destroyed when aggregating events into coarse semantic clusters.
-//
-// 5. Theorem 7 (The Price of Saying):
-//    $$n(E + \Delta) = nC + n\Lambda = n \cdot \text{Total Saying Bits}$$
-//    Total communication cost over $n$ messages balancing emission with clarification bits.
-//
-// 6. Proposition 6 (The Depth Ledger):
-//    $$H(X) = H(W_L) + \sum_{k=1}^L H(W_{k-1} \mid W_k), \quad I(X; Y) = I(W_L; Y) + \sum_{k=1}^L I(W_{k-1}; Y \mid
-//    W_k)$$ Telescopic identity preserving entropy and relevance across arbitrary hierarchy depths.
-//
-// 7. Proposition 10 (Finite-Sample Estimation):
-//    - Miller-Madow bias correction: $H_{MM} = \hat{H} + \frac{K - 1}{2n \ln 2}$.
-//    - Certified confidence intervals: $|H - \hat{H}| \le \epsilon \log_2(K/\epsilon)$.
-//
-// High-precision arithmetic is enforced throughout using Neumaier compensated summation.
-// ==============================================================================
+// =============================================================================
+//  file : src/Stats.cpp
+//  role : mathematical ledger, entropy estimation, and consequence accounting
+//  inv  : Fréchet polytope projection preserves exact ledger conservation laws
+// =============================================================================
 
 #include "librazobill/Stats.hpp"
 
@@ -50,8 +16,10 @@ namespace razobill::stats {
 
 namespace {
 
-// Neumaier compensated summation (Arnold Neumaier, 1974).
-// Eliminates catastrophic cancellation and keeps floating-point rounding error at O(eps).
+// -- neumaier compensated summation and hashers -------------------------------
+
+// compensated summation tracking rounding error to preserve double precision
+// ~ compensated summation because adding millions of tiny probabilities drifts
 class Sum {
 public:
     void add(double x) noexcept {
@@ -68,7 +36,6 @@ private:
 // 64-bit pair hash helper for high-performance unordered maps
 struct PairHash64 {
     std::size_t operator()(const std::pair<std::uint64_t, std::uint32_t>& p) const noexcept {
-        // Murmur-style mixer
         std::uint64_t h = p.first ^ (static_cast<std::uint64_t>(p.second) * 0x9E3779B97F4A7C15ULL);
         h ^= h >> 33U;
         h *= 0xFF51AFD7ED558CCDULL;
@@ -115,6 +82,7 @@ struct TripleHashU64 {
     }
 };
 
+/// compute Shannon entropy across values of map using compensated sum
 template <class Map> double entropyOfMap(const Map& m) {
     Sum total;
     for (const auto& kv : m)
@@ -133,7 +101,12 @@ template <class Map> double entropyOfMap(const Map& m) {
 
 } // namespace
 
-// Shannon entropy H(X) = - \sum p_i \log_2(p_i) computed with Neumaier compensation.
+// -- shannon entropy estimation -----------------------------------------------
+
+/// compute Shannon entropy H(X) in bits with Neumaier summation compensation
+/// in: counts non-negative frequency weights
+/// out: entropy in bits (base 2); 0.0 if empty or uniform single point
+/// thread: pure function, noexcept
 double entropyOfCounts(std::span<const double> counts) noexcept {
     Sum total;
     for (double c : counts)
@@ -150,6 +123,13 @@ double entropyOfCounts(std::span<const double> counts) noexcept {
     return std::max(h.value(), 0.0);
 }
 
+// -- semantic ledger computation ----------------------------------------------
+
+/// compute exact information-theoretic ledger from joint cell frequency mass
+/// inv: Fréchet polytope bounds projection guarantees non-negative quantities
+/// in: cells joint observations, totalEvents total count, confidenceAlpha
+/// out: Ledger struct with exact Shannon and Miller-Madow estimators
+/// thread: thread-safe
 Ledger ledger(std::span<const Cell> cells, double totalEvents, double confidenceAlpha) {
     std::unordered_map<std::pair<std::uint64_t, std::uint32_t>, double, PairHash64> joint;
     std::unordered_map<std::uint32_t, double> w;
@@ -176,31 +156,22 @@ Ledger ledger(std::span<const Cell> cells, double totalEvents, double confidence
     const double C = entropyOfMap(w);
     const double E = entropyOfMap(x);
     const double J = entropyOfMap(joint);
-    // Fréchet Polytope Projection (Theorem 1 / Information Theory Ledger):
-    // For any joint distribution with marginal entropies H(W) = C and H(X) = E,
-    // the joint entropy H(X,W) must lie within the Fréchet bounds:
-    //   max(C, E) <= H(X,W) <= C + E.
-    // Due to finite-sample estimation or floating-point imprecision, empirical J
-    // can slightly violate these boundaries. Projecting J into [max(C, E), C + E]
-    // produces J_bound, which guarantees:
-    //   1) Lambda = J_bound - C >= 0 (equivocation non-negativity)
-    //   2) Delta  = J_bound - E >= 0 (ambiguity non-negativity)
-    //   3) I      = C + E - J_bound >= 0 (mutual information non-negativity)
-    //   4) Exact algebraic ledger identities: (I + Lambda) == E, (I + Delta) == C,
-    //      and (E - C) == (Lambda - Delta), with zero independent clamping drift.
+
+    // project empirical joint entropy into Fréchet polytope [max(C, E), C + E]
+    // ~ bounds projection stops floating-point imprecision violating non-negativity
     const double J_bound = std::max({C, E, std::min(J, C + E)});
     const double Lambda = J_bound - C;
     const double Delta = J_bound - E;
     const double I = C + E - J_bound;
     const double distance = Lambda + Delta;
 
-    // Perplexity / Effective vocabulary metrics (Corollary 2 & Section 2.1)
+    // Perplexity / Effective vocabulary metrics: 2^H
     const double effectiveVocab = std::pow(2.0, E);
     const double effectiveContent = std::pow(2.0, C);
     const double effectiveLambda = std::pow(2.0, Lambda);
     const double effectiveDelta = std::pow(2.0, Delta);
 
-    // Stratified Miller-Madow bias corrections (Section 5.1 of Atta, 2026)
+    // Stratified Miller-Madow bias corrections for conditional distributions
     constexpr double twoLn2 = 1.3862943611198906;
     double lambdaMm = 0.0;
     if (nTot > 0.0) {
@@ -238,7 +209,6 @@ Ledger ledger(std::span<const Cell> cells, double totalEvents, double confidence
     const double expressionMm = millerMadow(E, x.size(), nTot);
     const double conveyanceMm = std::max(contentMm - deltaMm, 0.0);
 
-    // Proposition 10: Certified interval on content for coarse alphabets
     const auto ci = certifiedInterval(w.size(), nTot, confidenceAlpha);
 
     Ledger out;
@@ -264,6 +234,9 @@ Ledger ledger(std::span<const Cell> cells, double totalEvents, double confidence
     return out;
 }
 
+// -- consequence decomposition and information loss ---------------------------
+
+/// compute three-way consequence decomposition: E = I(X;Y) + H(M|Y) + H(X|M)
 ConsequenceDecomposition consequenceDecomposition(std::span<const XY> xy, std::span<const FormMeaning> map) {
     std::unordered_map<std::uint64_t, std::vector<std::pair<std::uint32_t, double>>> pm;
     for (const auto& m : map)
@@ -316,6 +289,7 @@ ConsequenceDecomposition consequenceDecomposition(std::span<const XY> xy, std::s
     return decomp;
 }
 
+/// compute volume-weighted Jensen-Shannon divergence for merging template forms
 MergeCost mergeCost(std::span<const XY> xy, const std::unordered_map<std::uint64_t, bool>& merged, double totalEvents) {
     if (merged.size() < 2) return {.jsd = 0.0, .share = 0.0};
     std::unordered_map<std::uint64_t, double> nf;
@@ -344,6 +318,7 @@ MergeCost mergeCost(std::span<const XY> xy, const std::unordered_map<std::uint64
     return {.jsd = std::max(jsd.value(), 0.0), .share = totalEvents > 0.0 ? N / totalEvents : 0.0};
 }
 
+/// compute conditional mutual information leakage I(X; Y | W)
 double leakage(std::span<const XY> xy, std::span<const FormMeaning> map) {
     std::unordered_map<std::uint64_t, std::vector<std::pair<std::uint32_t, double>>> pm;
     for (const auto& m : map)
@@ -368,6 +343,7 @@ double leakage(std::span<const XY> xy, std::span<const FormMeaning> map) {
     return std::max(entropyOfMap(xw) + entropyOfMap(yw) - entropyOfMap(w) - entropyOfMap(xyw), 0.0);
 }
 
+/// compute mutual information I(X; Y) from raw count distributions
 double mutualInformation(std::span<const XY> xy) {
     std::unordered_map<std::uint64_t, double> fx;
     std::unordered_map<std::uint32_t, double> fy;
@@ -383,6 +359,9 @@ double mutualInformation(std::span<const XY> xy) {
     return std::max(entropyOfMap(fx) + entropyOfMap(fy) - entropyOfMap(fxy), 0.0);
 }
 
+// -- price of saying and depth ledger -----------------------------------------
+
+/// compute prefix-code expected length bounds and wording premium
 PriceOfSaying priceOfSaying(const Ledger& l, double nMessages) noexcept {
     PriceOfSaying p;
     if (nMessages <= 0.0) return p;
@@ -396,6 +375,7 @@ PriceOfSaying priceOfSaying(const Ledger& l, double nMessages) noexcept {
     return p;
 }
 
+/// compute multi-level depth ledger decomposing entropy across functional steps
 DepthLedger computeDepthLedger(std::span<const HierarchicalStep> steps) {
     DepthLedger out;
     if (steps.empty()) return out;

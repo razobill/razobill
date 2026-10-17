@@ -4,6 +4,10 @@
 //  inv  : zero-copy arrow buffer decoding; thread-safe connection mutex
 // =============================================================================
 
+#ifndef _CRT_SECURE_NO_WARNINGS
+#define _CRT_SECURE_NO_WARNINGS
+#endif
+
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -20,6 +24,7 @@
 
 #include "adbc.h"
 #include "librazobill/Backend.hpp"
+#include "librazobill/Lifetime.hpp"
 
 namespace razobill {
 
@@ -281,7 +286,8 @@ private:
         struct Guard {
             AdbcDriver* d{nullptr};
             AdbcStatement* s{nullptr};
-            explicit Guard(AdbcDriver* d_in, AdbcStatement* s_in) noexcept : d(d_in), s(s_in) {}
+            explicit Guard(AdbcDriver* d_in RZ_LIFETIMEBOUND, AdbcStatement* s_in RZ_LIFETIMEBOUND) noexcept
+                : d(d_in), s(s_in) {}
             Guard(const Guard&) = delete;
             Guard& operator=(const Guard&) = delete;
             Guard(Guard&&) = delete;
@@ -299,7 +305,7 @@ private:
             fail("ExecuteQuery [" + q.substr(0, 160) + "]", err);
         struct StreamGuard {
             ArrowArrayStream* s{nullptr};
-            explicit StreamGuard(ArrowArrayStream* s_in) noexcept : s(s_in) {}
+            explicit StreamGuard(ArrowArrayStream* s_in RZ_LIFETIMEBOUND) noexcept : s(s_in) {}
             StreamGuard(const StreamGuard&) = delete;
             StreamGuard& operator=(const StreamGuard&) = delete;
             StreamGuard(StreamGuard&&) = delete;
@@ -313,7 +319,7 @@ private:
         if (stream.get_schema(&stream, &schema) != 0) throw BackendError("cannot read result schema");
         struct SchemaGuard {
             ArrowSchema* s{nullptr};
-            explicit SchemaGuard(ArrowSchema* s_in) noexcept : s(s_in) {}
+            explicit SchemaGuard(ArrowSchema* s_in RZ_LIFETIMEBOUND) noexcept : s(s_in) {}
             SchemaGuard(const SchemaGuard&) = delete;
             SchemaGuard& operator=(const SchemaGuard&) = delete;
             SchemaGuard(SchemaGuard&&) = delete;
@@ -332,7 +338,7 @@ private:
             if (!batch.release) break;
             struct BatchGuard {
                 ArrowArray* a{nullptr};
-                explicit BatchGuard(ArrowArray* a_in) noexcept : a(a_in) {}
+                explicit BatchGuard(ArrowArray* a_in RZ_LIFETIMEBOUND) noexcept : a(a_in) {}
                 BatchGuard(const BatchGuard&) = delete;
                 BatchGuard& operator=(const BatchGuard&) = delete;
                 BatchGuard(BatchGuard&&) = delete;

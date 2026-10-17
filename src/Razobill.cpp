@@ -40,7 +40,7 @@ namespace {
 class TransactionGuard {
 public:
     // ~ clickhouse adbc has no multi-statement acid, so guard stays dormant
-    explicit TransactionGuard(Backend& db, Flavor flavor) : db_(db), active_(flavor == Flavor::DuckDB) {
+    explicit TransactionGuard(Backend& db RZ_LIFETIMEBOUND, Flavor flavor) : db_(db), active_(flavor == Flavor::DuckDB) {
         if (active_) {
             try {
                 db_.exec("BEGIN TRANSACTION");
@@ -165,7 +165,7 @@ public:
         return ids_.try_emplace(s, static_cast<std::uint32_t>(ids_.size())).first->second;
     }
     /// view of interned string-to-id dictionary
-    [[nodiscard]] const std::unordered_map<std::string, std::uint32_t>& map() const { return ids_; }
+    [[nodiscard]] const std::unordered_map<std::string, std::uint32_t>& map() const RZ_LIFETIMEBOUND { return ids_; }
 
 private:
     std::unordered_map<std::string, std::uint32_t> ids_;
@@ -646,18 +646,18 @@ void RazobillEngine::rebuildDerivedLocked() {
     db_.exec(dx_->truncate("rb_doubt"));
     std::string values;
     std::size_t k = 0;
-    auto flush = [&] {
-        if (!values.empty()) {
-            db_.exec("INSERT INTO rb_doubt VALUES " + values);
-            values.clear();
+    auto flush = [&](std::string& vals) {
+        if (!vals.empty()) {
+            db_.exec("INSERT INTO rb_doubt VALUES " + vals);
+            vals.clear();
         }
     };
     for (const auto& [id, r] : rows) {
         values += (values.empty() ? "(" : ", (") + std::to_string(id) + ", " +
                   (r.pmax >= cfg_.tau ? dx_->quote(r.top) : std::string("NULL")) + ", " + num(std::max(r.h, 0.0)) + ")";
-        if (++k % 400 == 0) flush();
+        if (++k % 400 == 0) flush(values);
     }
-    flush();
+    flush(values);
 }
 
 // -- semantic rule administration and gating ----------------------------------

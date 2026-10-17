@@ -7,10 +7,6 @@
 // filesystem paths across platforms, and formats structured result metrics
 // =============================================================================
 
-#ifndef _CRT_SECURE_NO_WARNINGS
-#define _CRT_SECURE_NO_WARNINGS
-#endif
-
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>

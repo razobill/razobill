@@ -33,6 +33,7 @@ def resolve_extension_path() -> str:
         try:
             return pyrazobill.extensionPath().replace("\\", "/")
         except Exception:
+            # Fall back to searching known build tree candidate paths
             pass
 
     # 3. Known build tree candidate locations
@@ -67,7 +68,8 @@ def main():
         try:
             N = int(sys.argv[1])
         except ValueError:
-            pass
+            # Fall back to default count when CLI argument is not an integer
+            print(f"Invalid record count '{sys.argv[1]}'; defaulting to {N:,}")
 
     print(f"\nGenerating in-memory dataset of {N:,} log messages...")
     con.execute(

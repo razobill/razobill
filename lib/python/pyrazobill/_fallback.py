@@ -358,6 +358,7 @@ def hash(input_val: Union[str, bytes]) -> int:
 
         return xxhash.xxh64_intdigest(data, seed=0)
     except ImportError:
+        # Fall back to pure-Python xxHash64 when xxhash is not installed
         pass
 
     import struct

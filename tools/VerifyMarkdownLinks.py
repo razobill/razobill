@@ -4,7 +4,7 @@
 #
 # validates every internal relative markdown link across the repository,
 # ignoring fenced code blocks and inline code literals
-# ~ بيتأكد إن مفيش رابط داخلي في ملفات الماركداون بيودي على الفراغ
+# ~ validates that every internal markdown link resolves to a real target
 # =============================================================================
 
 import re

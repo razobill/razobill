@@ -4,7 +4,7 @@
 #
 # enforces hard limits: <= 7 exported functions, <= 3 types in RazobillC.h,
 # unified CamelCase Rz prefix, zero legacy aliases, and zero banned terms
-# ~ الحارس اللي بيمنع أي حد يزود دالة في الواجهة العامة من غير ما يحسب حسابها
+# ~ guards C ABI surface against accidental function or type additions
 # =============================================================================
 
 import re

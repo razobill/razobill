@@ -4,7 +4,7 @@
 #
 # streams partitioned columnar Parquet (100k+ events) across 6 services,
 # tests concurrent in-S3 query scans, and audits bit-level reconstruction
-# ~ اختبار إجهاد شديد بيبعت 100 ألف سجل لـ S3 ويتأكد إن مفيش خطأ واحد
+# ~ streams 100k+ events across services to verify lossless roundtrips
 # =============================================================================
 
 import sys

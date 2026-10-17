@@ -4,7 +4,7 @@
 #
 # validates Markdown files against docs/STYLE.md: untagged code blocks,
 # marketing hype words, deprecated symbols, sentence-case headings, and length
-# ~ المراقب اللغوي اللي بيطرد كلام الماركتنج المبتذل من التوثيق
+# ~ scans documentation to reject marketing fluff and banned buzzwords
 # =============================================================================
 
 import sys

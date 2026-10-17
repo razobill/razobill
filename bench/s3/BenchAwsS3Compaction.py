@@ -4,7 +4,7 @@
 #
 # measures S3 storage compaction (raw text vs raw Parquet vs Razobill Parquet),
 # wire stream put latency, in-S3 query scans, and cloud cost economics
-# ~ بنقيس تكلفة التخزين السحابي على S3 وسرعة استعلام الباركيه عبر الشبكة
+# ~ evaluates S3 storage cost reduction and Parquet query scan latencies
 # =============================================================================
 
 import sys

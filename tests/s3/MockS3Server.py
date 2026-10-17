@@ -3,7 +3,7 @@
 #
 # supports DuckDB httpfs client: single-part PUT, multi-part upload, range
 # GET requests, HEAD, and DELETE without external MinIO/S3 daemon dependencies
-# ~ سيرفر s3 غلبان شغال في الرام عشان مانحتاجش minio ولا aws
+# ~ in-memory S3 mock eliminating external LocalStack or MinIO dependencies
 # =============================================================================
 
 import hashlib

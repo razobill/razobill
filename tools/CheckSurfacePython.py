@@ -4,7 +4,7 @@
 #
 # enforces hard limits: <= 8 public symbols exported in __all__, and zero
 # banned scientific terms in public docstrings or module documentation
-# ~ بنعد الأسماء في __all__ عشان محدش يزود حاجات على الواجهة بدون ترخيص
+# ~ audits __all__ exports to ensure stable public Python API surface
 # =============================================================================
 
 import sys

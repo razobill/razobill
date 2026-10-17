@@ -4,7 +4,7 @@
 #
 # simulates in-flight edge decomposition, nanosecond per-record latency (p50,
 # p99), wire egress compression, and byte-for-byte exact invertibility
-# ~ بنحاكي دور مجمع السجلات على الأجهزة الطرفية قبل ما يبعت على الشبكة
+# ~ simulates edge collector compaction before network transmission
 # =============================================================================
 
 import sys

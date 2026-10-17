@@ -4,7 +4,7 @@
 #
 # evaluates cold vs warm decomposition, pinned core latency, multi-threaded
 # scaling speedup, and native BenchCore execution across real Loghub datasets
-# ~ المايسترو اللي بيشغل كل الاختبارات المعيارية ويسجل النتائج في ملف جيسون
+# ~ orchestrates all benchmarks and writes verified performance JSON reports
 # =============================================================================
 
 import os

@@ -4,7 +4,7 @@
 #
 # benchmarks ingestion throughput, compression ratio, lossless reconstruction,
 # decoding throughput, search/aggregation query latency, and logging handlers
-# ~ مقارنة مباشرة مع clp عشان نشوف مين بيكسب في إيه وبأرقام موثقة
+# ~ head-to-head throughput and compression comparison against CLP
 # =============================================================================
 
 import argparse

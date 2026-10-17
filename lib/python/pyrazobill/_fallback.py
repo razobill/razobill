@@ -69,7 +69,7 @@ def _scan(msg: str, mode: str):
     out: generator yielding (gap_slice, token_or_None) pairs
     thread: thread-safe generator
     """
-    # ~ المود السيمانتك بيحاول يفهم سياق الكلام زي اسم المستخدم والمسار
+    # ~ semantic mode classifies identifiers and paths into string slots
     n = len(msg)
     p = 0
     gap = 0

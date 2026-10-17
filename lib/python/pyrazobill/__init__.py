@@ -79,7 +79,7 @@ try:
     _core = importlib.import_module(".Core", package=__name__)
     _NATIVE = True
 except (ImportError, AttributeError):
-    # ~ لو الكور مش مبني بنقلب بايثون صافي بنفس النتائج
+    # ~ falls back to pure-Python engine if C extension is unavailable
     from . import _fallback as _core
 
     _NATIVE = False

@@ -4,7 +4,7 @@
 #
 # streams decomposed log columns directly to S3 Parquet, executes in-S3 filter
 # predicates, and verifies byte-for-byte exact reconstruction over S3 Parquet
-# ~ بنصدر لـ s3 ونقرأ تاني ونتأكد إن مافيش ولا بايت طار في السكة
+# ~ verifies round-trip S3 Parquet export and query preserves exact bytes
 # =============================================================================
 
 import argparse

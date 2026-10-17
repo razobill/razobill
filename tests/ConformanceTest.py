@@ -4,7 +4,7 @@
 #
 # runs tricky log lines from ConformanceCorpus.txt through Python (pyrazobill),
 # universal C ABI (razobill.dll), and DuckDB SQL (RzSplit, RzJoin)
-# ~ ثلاثة مسارات بلغات مختلفة، والناتج بايت ببايت زي بعض
+# ~ three implementation runtimes producing bit-identical byte output
 # =============================================================================
 
 import ctypes

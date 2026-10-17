@@ -3,7 +3,7 @@
 # CodeRabbit AI code review configuration and domain guidelines
 #
 # sets review profile, tools, and project-specific review instructions
-# ~ تعليمات المراجع الآلي اللي بتفكره بقوانين رازو بيل الصارمة في كل طلب سحب
+# ~ automated reviewer instructions enforcing Razobill invariants on PRs
 # =============================================================================
 version: 2
 language: "en-US"

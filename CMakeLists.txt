@@ -3,7 +3,7 @@
 #
 # builds static engine library, shared universal C ABI (razobill_cabi), DuckDB
 # loadable C extension (RazobillDuckdb), unit/integration test suites, and bench
-# ~ ملف التجميع الرئيسي اللي بيبني المكتبة والإضافة والاختبارات كلها
+# ~ orchestrates native C++20 engine, C ABI, DuckDB, and benchmark builds
 # =============================================================================
 
 cmake_minimum_required(VERSION 3.20)

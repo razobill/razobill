@@ -4,7 +4,7 @@
 #
 # evaluates parsing throughput, S3 Parquet compaction, query scan latency,
 # exact invertibility vs lossy wildcards, and dual-tier cloud cost economics
-# ~ درين 3 بيضيع المتغيرات مع النجوم وعايز خيط واحد، رازو بيل بيحفظ كل بايت
+# ~ Drain3 star masks lose token values; Razobill preserves exact bytes
 # =============================================================================
 
 import sys

@@ -2,7 +2,7 @@
 # root repository Ruff linter and formatter configuration
 #
 # configures Python style rules, max line length, and benchmark ignore rules
-# ~ إعدادات منسق الكود رَف لكل ملفات البايثون في المشروع
+# ~ configures Ruff linter and formatter rules for repository Python code
 # =============================================================================
 
 [tool.ruff]

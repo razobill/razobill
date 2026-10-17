@@ -3,7 +3,7 @@
 #
 # integrates with duckdb/extension-ci-tools to build and package loadable
 # extension binaries for community distribution
-# ~ ملف الميك اللي بتستخدمه منصة الدك دي بي عشان تبني الإضافة أوتوماتيك
+# ~ drives extension-ci-tools matrix for DuckDB loadable distribution
 # =============================================================================
 .PHONY: clean clean_all
 

@@ -4,7 +4,7 @@
 #
 # provides unified S3 connectivity across live AWS, LocalStack, MinIO, and
 # zero-dependency MockS3Server loopback fallback for automated test runs
-# ~ نلف وندور ونرجع للـ mock السريع عشان ماحدش يدفع فواتير aws في الاختبارات
+# ~ routes to in-memory mock to avoid cloud billing during local test runs
 # =============================================================================
 
 import os

@@ -4,7 +4,7 @@
 #
 # enforces hard limits: <= 4 registered SQL functions, 0 legacy aliases,
 # and zero banned terms in the DuckDB extension public surface
-# ~ مفيش أكتر من أربع دوال، وممنوع أي اسم قديم يتسرب للدك دي بي
+# ~ enforces <= 4 DuckDB extension scalar functions and no legacy aliases
 # =============================================================================
 
 import re

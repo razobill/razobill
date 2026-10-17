@@ -4,7 +4,7 @@
 #
 # evaluates parallel decomposition throughput, memory footprint, and exact
 # byte-level invertibility across full logs/ corpus via auditParallel
-# ~ بنرمي عليه كل الملفات دفعة واحدة عشان نتأكد إن مفيش بايت واحد بيسقط
+# ~ multi-gigabyte log batch stress testing lossless invertibility
 # =============================================================================
 
 import os

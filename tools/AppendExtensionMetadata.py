@@ -4,7 +4,7 @@
 #
 # appends 512-byte trailing metadata footer to loadable .duckdb_extension
 # encoding ABI type (C_STRUCT), DuckDB C API version, and target platform
-# ~ لو البايتات دي ناقصة دك دي بي بيرفض يفتح الامتداد نهائياً
+# ~ DuckDB rejects loading extensions missing signed 4-byte footer magic
 # =============================================================================
 
 import argparse

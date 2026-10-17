@@ -4,7 +4,7 @@
 #
 # benchmarks multi-threaded RzSplit and RzJoin vectorized execution over
 # 1,000,000 synthetic log records directly inside DuckDB query engine
-# ~ بنقيس أداء الامتداد جوه دك دي بي على مليون سطر عشان نتأكد من السرعة
+# ~ benchmarks DuckDB extension throughput over 1M synthetic log lines
 # =============================================================================
 
 import os

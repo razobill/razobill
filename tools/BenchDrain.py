@@ -4,7 +4,7 @@
 #
 # benchmarks single-threaded latency percentiles, multi-threaded scaling,
 # streaming stability, and grouping accuracy vs lossless invertibility
-# ~ درين بيخمن قوالب بالتقريب، رازوبيل بيقسم بصرامة بدون أي فقدان
+# ~ Drain clusters heuristically; Razobill decomposes losslessly
 # =============================================================================
 
 import argparse

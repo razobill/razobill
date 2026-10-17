@@ -39,6 +39,19 @@ option(ENABLE_SANITIZER_ASAN_UBSAN "Enable AddressSanitizer and UndefinedBehavio
 option(ENABLE_SANITIZER_TSAN "Enable ThreadSanitizer" OFF)
 option(ENABLE_COVERAGE "Enable code coverage instrumentation (GCC/Clang)" OFF)
 option(ENABLE_FUZZING "Build libFuzzer fuzz targets" OFF)
+option(ENABLE_LIFETIME_SAFETY "Enable Clang Lifetime Safety Analysis (-Wlifetime-safety)" OFF)
+
+if(WIN32)
+  add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+endif()
+
+if(ENABLE_LIFETIME_SAFETY)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    add_compile_options(-Wlifetime-safety -Wlifetime-safety-suggestions -Wlifetime-safety-validations)
+  else()
+    message(WARNING "ENABLE_LIFETIME_SAFETY requires Clang; current compiler is ${CMAKE_CXX_COMPILER_ID}")
+  endif()
+endif()
 
 if(MSVC)
   add_compile_options(/W4 /wd4996)
@@ -219,6 +232,7 @@ if(NOT RAZOBILL_BUILD_EXT_ONLY)
     tests/UnitArena.cpp
     tests/UnitCAPI.cpp
     tests/UnitChannel.cpp
+    tests/UnitLifetime.cpp
   )
   target_include_directories(UnitTests PRIVATE thirdparty include)
   if(NOT MSVC)

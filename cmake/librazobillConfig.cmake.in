@@ -1,3 +1,11 @@
+# =============================================================================
+# CMake package configuration template for librazobill
+#
+# defines imported targets and resolves dependencies for
+# find_package(librazobill)
+# ~ ملف تعريف الحزمة لـ سي ميك عشان المشاريع التانية تضمن رازو بيل بسهولة
+# =============================================================================
+
 @PACKAGE_INIT@
 
 include(CMakeFindDependencyMacro)

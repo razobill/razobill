@@ -1,3 +1,10 @@
+# =============================================================================
+# Release engineering and binary artifact distribution workflow
+#
+# validates SemVer and Conventional Commits, builds multi-platform DuckDB
+# extensions and Python wheels, generates provenance attestations, and publishes
+# =============================================================================
+
 name: Release Engineering & Binary Artifacts
 
 on:

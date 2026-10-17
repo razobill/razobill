@@ -1,4 +1,10 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# =============================================================================
+# CodeRabbit AI code review configuration and domain guidelines
+#
+# sets review profile, tools, and project-specific review instructions
+# ~ تعليمات المراجع الآلي اللي بتفكره بقوانين رازو بيل الصارمة في كل طلب سحب
+# =============================================================================
 version: 2
 language: "en-US"
 tone_instructions: "You are an expert systems software engineer and high-performance C++20 compiler/database architect. Provide deep, technically rigorous reviews focused on correctness, memory safety, data integrity, and performance."

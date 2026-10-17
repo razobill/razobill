@@ -1,3 +1,10 @@
+# =============================================================================
+# GitHub Actions test coverage measurement and Codecov upload workflow
+#
+# compiles with gcov/lcov instrumentation for C++ and pytest-cov for Python
+# ~ قياس نسبة التغطية الاختبارية لسي بلس بلس وبايثون ورفع التقارير
+# =============================================================================
+
 name: Code Coverage
 
 on:

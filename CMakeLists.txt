@@ -1,3 +1,11 @@
+# =============================================================================
+# CMake build configuration for librazobill, Universal C ABI, and DuckDB ext
+#
+# builds static engine library, shared universal C ABI (razobill_cabi), DuckDB
+# loadable C extension (RazobillDuckdb), unit/integration test suites, and bench
+# ~ ملف التجميع الرئيسي اللي بيبني المكتبة والإضافة والاختبارات كلها
+# =============================================================================
+
 cmake_minimum_required(VERSION 3.20)
 
 file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" LIBRAZOBILL_PROJECT_VERSION)
@@ -97,7 +105,8 @@ target_include_directories(librazobill
 target_link_libraries(librazobill PUBLIC Threads::Threads ${CMAKE_DL_LIBS})
 target_compile_definitions(librazobill PUBLIC LIBRAZOBILL_STATIC)
 
-# Universal C ABI Shared Library (for foreign FFIs: Go, Rust, Python ctypes, Zig, C#)
+# Universal C ABI Shared Library
+# (for foreign FFIs: Go, Rust, Python ctypes, Zig, C#)
 add_library(razobill_cabi SHARED src/RazobillC.cpp)
 target_include_directories(razobill_cabi PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 target_compile_definitions(razobill_cabi PRIVATE LIBRAZOBILL_EXPORTS)
@@ -171,7 +180,8 @@ if(NOT RAZOBILL_BUILD_EXT_ONLY)
       set(DUCKDB_PLATFORM "linux_amd64")
     endif()
 
-    # Sign the DuckDB extension with ABI metadata (both razobill and librazobill names)
+    # Sign DuckDB extension with ABI metadata
+    # (both razobill and librazobill names)
     add_custom_command(TARGET RazobillDuckdb POST_BUILD
       COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/AppendExtensionMetadata.py -l $<TARGET_FILE:RazobillDuckdb> -n razobill
               -o ${CMAKE_BINARY_DIR}/razobill.duckdb_extension -p ${DUCKDB_PLATFORM} -dv v1.2.0 -ev v${LIBRAZOBILL_PROJECT_VERSION} --abi-type C_STRUCT

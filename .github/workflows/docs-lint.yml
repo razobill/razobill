@@ -1,3 +1,10 @@
+# =============================================================================
+# GitHub Actions documentation style and link verification workflow
+#
+# verifies documentation files against style guide, banned terms, and links
+# ~ فحص جودة التوثيق والروابط الداخلية ومنع تسرب الكلمات المحظورة
+# =============================================================================
+
 name: Documentation Lint
 
 on:

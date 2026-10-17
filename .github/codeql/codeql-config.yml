@@ -1,3 +1,10 @@
+# =============================================================================
+# GitHub CodeQL static analysis query configuration
+#
+# excludes vendored third-party code and filters noisy C++ static check queries
+# ~ إعدادات الفاحص الأمني كود كيو إل لتجاهل المكتبات الخارجية المضمنة
+# =============================================================================
+
 name: "Razobill CodeQL Analysis Configuration"
 
 # Exclude vendored thirdparty libraries from analysis

@@ -1,3 +1,9 @@
+# =============================================================================
+# GitHub Pages static interactive visualizer deployment workflow
+#
+# publishes docs/web visualizer assets to GitHub Pages environment
+# =============================================================================
+
 name: Deploy GitHub Pages
 
 on:

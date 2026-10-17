@@ -1,3 +1,10 @@
+# =============================================================================
+# GitHub Actions sanitizers and static analysis workflow
+#
+# runs ASan, UBSan, TSan data race detection, fuzzing, and Clang-Tidy checks
+# ~ صائد الثغرات اللي بيمسك سباق الخيوط وتسريب الذاكرة قبل ما يدخل الكود
+# =============================================================================
+
 name: Sanitizers & Static Analysis
 
 on:

@@ -1,3 +1,11 @@
+# =============================================================================
+# GitHub Actions CI matrix: OS platforms, Python versions, AVX-512, and fuzzing
+#
+# builds and tests across Linux, macOS, and Windows with GCC, Clang, and MSVC;
+# runs Intel SDE AVX-512 emulation, differential fuzzing, and ABI stability
+# ~ خط الأنابيب الرئيسي اللي بيتأكد من سلامة البناء عبر كل المنصات والمعالجات
+# =============================================================================
+
 name: Continuous Integration
 
 on:

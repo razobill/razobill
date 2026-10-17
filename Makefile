@@ -1,5 +1,10 @@
-# Root Makefile for DuckDB Community Extensions CI
-# Drives build through duckdb/extension-ci-tools for the stable C_STRUCT ABI.
+# =============================================================================
+# Makefile driving DuckDB community extension CI and C_STRUCT ABI builds
+#
+# integrates with duckdb/extension-ci-tools to build and package loadable
+# extension binaries for community distribution
+# ~ ملف الميك اللي بتستخدمه منصة الدك دي بي عشان تبني الإضافة أوتوماتيك
+# =============================================================================
 .PHONY: clean clean_all
 
 PROJ_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))

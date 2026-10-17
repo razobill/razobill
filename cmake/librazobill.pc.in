@@ -1,3 +1,10 @@
+# =============================================================================
+# pkg-config package template for librazobill
+#
+# provides compiler and linker flags for external C and C++ consumers
+# ~ ملف توصيف الحزمة لبرامج لينكس عشان يلاقوا المكتبة ورؤوس الترويسات
+# =============================================================================
+
 prefix=@CMAKE_INSTALL_PREFIX@
 exec_prefix=${prefix}
 libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@

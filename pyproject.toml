@@ -1,3 +1,10 @@
+# =============================================================================
+# root repository Ruff linter and formatter configuration
+#
+# configures Python style rules, max line length, and benchmark ignore rules
+# ~ إعدادات منسق الكود رَف لكل ملفات البايثون في المشروع
+# =============================================================================
+
 [tool.ruff]
 line-length = 120
 target-version = "py39"
@@ -11,8 +18,11 @@ exclude = [
 [tool.ruff.lint]
 select = ["E", "F", "W"]
 ignore = [
-    "E402",  # Module level import not at top of file (standalone bench/test scripts inject local package to sys.path)
-    "E501",  # Line too long (handled by ruff format, long table printing in benchmarks preserved)
+    # Module level import not at top of file:
+    # standalone bench/test scripts inject local package to sys.path
+    "E402",
+    # Line too long: handled by ruff format; table printing in bench preserved
+    "E501",
 ]
 
 [tool.ruff.format]

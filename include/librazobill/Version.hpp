@@ -1,15 +1,19 @@
 #pragma once
-// Version and ABI specification for librazobill.
-// Follows strict Semantic Versioning 2.0.0 (MAJOR.MINOR.PATCH).
+
+// =============================================================================
+//  file : include/librazobill/Version.hpp
+//  role : semantic versioning constants and abi compatibility metadata
+//  inv  : ABI version stability guaranteed across minor and patch bumps
+// =============================================================================
+
+// Semantic Versioning 2.0.0 and binary ABI specification.
 //
-// GOVERNANCE & THE ABI CONTRACT:
-// Software versioning is an explicit contract between maintainers and consumers.
-// 1. API Compatibility: Source-level. A minor version bump guarantees consumer C++ code compiles.
-// 2. ABI Compatibility: Binary/symbol-level. Crucial for shared libraries (.dll, .so).
-//    As long as LIBRAZOBILL_ABI_VERSION remains unchanged, consumers can swap shared binaries
-//    without recompiling their host applications.
-//
-// Breaking changes are forbidden without incrementing MAJOR.
+// ABI COMPATIBILITY CONTRACT:
+// 1. API Compatibility: Minor version increments maintain source compatibility.
+// 2. ABI Compatibility: Shared library symbol interfaces remain stable while
+//    LIBRAZOBILL_ABI_VERSION is unchanged. Breaking binary changes require
+//    incrementing MAJOR per docs/reference/deprecation-policy.md.
+
 #include <cstdint>
 #include <string_view>
 
@@ -37,6 +41,7 @@ static_assert(__cplusplus >= 202002L, "librazobill requires C++20 or later (-std
 
 namespace razobill {
 
+/// container holding compile-time semantic version and binary ABI values
 struct VersionInfo {
     std::uint32_t major{LIBRAZOBILL_VERSION_MAJOR};
     std::uint32_t minor{LIBRAZOBILL_VERSION_MINOR};
@@ -45,14 +50,23 @@ struct VersionInfo {
     const char* string{LIBRAZOBILL_VERSION_STRING};
 };
 
+/// returns VersionInfo aggregate struct
+/// out: initialized VersionInfo with compile-time constants
+/// thread: pure constexpr, noexcept
 [[nodiscard]] constexpr VersionInfo version() noexcept {
     return VersionInfo{};
 }
 
+/// returns runtime C++ library ABI version
+/// out: uint32 ABI version (currently 1)
+/// thread: pure constexpr, noexcept
 [[nodiscard]] constexpr std::uint32_t abiVersion() noexcept {
     return LIBRAZOBILL_ABI_VERSION;
 }
 
+/// returns semantic version string view
+/// out: string_view referencing static string literal
+/// thread: pure constexpr, noexcept
 [[nodiscard]] constexpr std::string_view versionString() noexcept {
     return LIBRAZOBILL_VERSION_STRING;
 }

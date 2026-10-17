@@ -1,6 +1,9 @@
-// MemoryArena: Monotonic bump-pointer memory allocator with 64-byte cache-line alignment.
-// Provides O(1) allocation, bulk reset with 100% block reuse (zero re-allocation churn),
-// and strict memory safety. Grounded in Data-Oriented Design (DOD).
+// =============================================================================
+//  file : include/librazobill/MemoryArena.hpp
+//  role : monotonic bump-pointer arena allocator with 64-byte cache alignment
+//  inv  : O(1) bump allocation; reset() rewinds without freeing backing blocks
+// =============================================================================
+
 #pragma once
 
 #include <cstddef>
@@ -14,20 +17,29 @@
 
 namespace razobill::core {
 
+// -- memory arena allocator ---------------------------------------------------
+
+/// monotonic bump allocator providing zero-allocation reuse on the hot path
+/// inv: bulk reset rewinds bump offsets without freeing backing heap pages
 class MemoryArena {
 public:
+    /// contiguous memory block allocated with 64-byte cache-line alignment
     struct Block {
         void* ptr = nullptr;
         std::size_t capacity = 0;
     };
 
+    /// construct arena with specified default block size
+    /// in: defaultBlockSize capacity in bytes for new blocks (default 256 KB)
     explicit MemoryArena(std::size_t defaultBlockSize = 256 * 1024) : defaultBlockSize_(defaultBlockSize) {}
 
+    /// destructor frees all allocated OS blocks
     ~MemoryArena() { clear(); }
 
     MemoryArena(const MemoryArena&) = delete;
     MemoryArena& operator=(const MemoryArena&) = delete;
 
+    /// move constructor transfers block ownership and rewinds source
     MemoryArena(MemoryArena&& other) noexcept
         : blocks_(std::move(other.blocks_)), currentBlockIdx_(other.currentBlockIdx_), offset_(other.offset_),
           defaultBlockSize_(other.defaultBlockSize_) {
@@ -36,6 +48,7 @@ public:
         other.defaultBlockSize_ = 0;
     }
 
+    /// move assignment transfers block ownership after clearing current arena
     MemoryArena& operator=(MemoryArena&& other) noexcept {
         if (this != &other) {
             clear();
@@ -50,7 +63,13 @@ public:
         return *this;
     }
 
-    // Fast monotonic bump allocation with alignment guarantees (default 8 bytes, or 64 for SIMD vectors).
+    /// bump allocate memory aligned to alignment boundary
+    /// inv: O(1) pointer advance on fast path; amortized zero allocation on reset
+    /// in: bytes allocation size, alignment power of two (default 8 bytes)
+    /// out: non-null aligned pointer; nullptr if bytes == 0
+    /// own: memory owned by arena; lifetime tied to arena until reset() or clear()
+    /// thread: not thread-safe; single-threaded or thread-confined per worker
+    /// err: throws std::bad_alloc on OS allocation failure or size overflow
     [[nodiscard]] void* allocate(std::size_t bytes, std::size_t alignment = 8) {
         if (bytes == 0) [[unlikely]]
             return nullptr;
@@ -121,6 +140,13 @@ public:
         return reinterpret_cast<void*>(alignedBase);
     }
 
+    /// construct trivially destructible object in arena memory
+    /// inv: static assert guarantees T requires no destructor execution
+    /// in: args forward arguments for T constructor
+    /// out: non-null pointer to constructed object of type T
+    /// own: memory managed by arena; destructor is NOT called on reset()
+    /// thread: not thread-safe
+    /// err: throws std::bad_alloc on allocation failure
     template <typename T, typename... Args> [[nodiscard]] T* create(Args&&... args) {
         static_assert(
             std::is_trivially_destructible_v<T>,
@@ -129,14 +155,20 @@ public:
         return ::new (mem) T(std::forward<Args>(args)...);
     }
 
-    // O(1) bulk reset: rewinds bump pointer to zero across all blocks without deallocating pages.
-    // Preserves warm L1/L2 caches and eliminates kernel page faults.
+    /// bulk reset bump pointers to zero across all blocks without deallocation
+    /// inv: preserves allocated blocks for reuse, eliminating OS page faults
+    /// out: arena is empty; all prior pointers are invalidated
+    /// thread: not thread-safe
+    /// err: noexcept
     void reset() noexcept {
         currentBlockIdx_ = 0;
         offset_ = 0;
     }
 
-    // Frees all backing memory blocks back to the OS.
+    /// release all backing OS memory blocks back to the system
+    /// inv: frees all blocks and resets indices to zero
+    /// thread: not thread-safe
+    /// err: noexcept
     void clear() noexcept {
         for (const auto& block : blocks_) {
             if (block.ptr) {
@@ -152,8 +184,12 @@ public:
         offset_ = 0;
     }
 
+    // -- capacity and diagnostic metrics --------------------------------------
+
+    /// total number of backing OS blocks allocated
     [[nodiscard]] std::size_t totalAllocatedBlocks() const noexcept { return blocks_.size(); }
 
+    /// cumulative capacity across all backing blocks in bytes
     [[nodiscard]] std::size_t totalAllocatedCapacity() const noexcept {
         std::size_t sum = 0;
         for (const auto& b : blocks_)
@@ -161,12 +197,16 @@ public:
         return sum;
     }
 
+    /// alias for totalAllocatedCapacity
     [[nodiscard]] std::size_t capacity() const noexcept { return totalAllocatedCapacity(); }
 
+    /// 0-based index of the currently active block
     [[nodiscard]] std::size_t activeBlockIndex() const noexcept { return currentBlockIdx_; }
 
+    /// byte offset within the currently active block
     [[nodiscard]] std::size_t currentOffset() const noexcept { return offset_; }
 
+    /// total bytes currently consumed by allocations across blocks
     [[nodiscard]] std::size_t allocatedBytes() const noexcept {
         if (blocks_.empty()) return 0;
         std::size_t sum = 0;

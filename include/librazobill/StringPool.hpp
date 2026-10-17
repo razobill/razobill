@@ -1,5 +1,9 @@
-// High-efficiency string pool and text dictionary with GC and compaction support.
-// Data-Oriented Design (DOD): C++20 heterogeneous string_view hashing and reader-writer locking.
+// =============================================================================
+//  file : include/librazobill/StringPool.hpp
+//  role : string pool and dictionary with gc compaction and shared locking
+//  inv  : dense 32-bit ids; deque preserves pointer stability on push_back
+// =============================================================================
+
 #pragma once
 
 #include <cstdint>
@@ -13,13 +17,20 @@
 
 namespace razobill::core {
 
+// -- compaction statistics ----------------------------------------------------
+
+/// statistics from a string pool garbage collection and compaction pass
 struct StringPoolStats {
     std::size_t totalBefore = 0;
     std::size_t activeAfter = 0;
     std::size_t purgedCount = 0;
 };
 
+// -- heterogeneous lookup functors --------------------------------------------
+
 namespace detail {
+
+/// heterogeneous string_view hash avoiding allocations on lookup
 struct TransparentStringHash {
     using is_transparent = void;
     [[nodiscard]] std::size_t operator()(std::string_view sv) const noexcept {
@@ -29,6 +40,8 @@ struct TransparentStringHash {
         return std::hash<std::string_view>{}(s);
     }
 };
+
+/// heterogeneous string_view equality functor avoiding allocations on lookup
 struct TransparentStringEqual {
     using is_transparent = void;
     [[nodiscard]] bool operator()(std::string_view a, std::string_view b) const noexcept { return a == b; }
@@ -36,14 +49,24 @@ struct TransparentStringEqual {
     [[nodiscard]] bool operator()(const std::string& a, std::string_view b) const noexcept { return a == b; }
     [[nodiscard]] bool operator()(std::string_view a, const std::string& b) const noexcept { return a == b; }
 };
+
 } // namespace detail
 
+// -- thread-safe string pool --------------------------------------------------
+
+/// thread-safe string pool assigning dense 32-bit ids to unique strings
+/// inv: deque storage guarantees pointer stability across push_back (intern)
 class StringPool {
 public:
     StringPool() = default;
 
-    // Interns a string, returning a dense 32-bit integer ID [0..N-1].
-    // Utilizes shared_mutex fast-path with zero heap allocation for existing strings.
+    /// intern string view into pool, returning dense 32-bit id
+    /// inv: identical strings map to the same id; zero allocation on cache hit
+    /// in: arbitrary byte sequence view s
+    /// out: dense 32-bit integer id in range [0..size()-1]
+    /// own: pool allocates and owns heap copy only on first insertion
+    /// thread: thread-safe, double-checked locking with shared_mutex
+    /// err: noexcept(false) on allocation failure
     std::uint32_t intern(std::string_view s) {
         {
             std::shared_lock<std::shared_mutex> lock(mutex_);
@@ -66,16 +89,13 @@ public:
         return id;
     }
 
-    /// Fast string_view accessor preserving source compatibility.
-    /// References remain stable across intern() operations because idToStr_ uses std::deque
-    /// (guaranteeing pointer stability on push_back). Invalidated only on gc() or clear().
-    ///
-    /// @warning [CONCURRENCY LIFETIME HAZARD]: In multi-threaded environments where gc() or clear()
-    /// can be invoked concurrently on this pool, the returned std::string_view may dangle after the internal
-    /// read lock is released (Use-After-Free).
-    /// For concurrent workloads with active dictionary compaction or garbage collection, do NOT use
-    /// lookup(id) -> std::string_view. Instead, use lookupCopy(id), lookup(id, out), or scoped withString(id, fn),
-    /// which guarantee thread and memory safety by holding the read lock across string access.
+    /// fast string_view accessor borrowing internal deque storage
+    /// inv: pointers remain stable across intern() due to std::deque paging
+    /// in: 32-bit interned string id
+    /// out: borrowed string_view, or empty view if id is out of bounds
+    /// own: borrows pool storage; invalidated if concurrent gc() or clear() runs
+    /// thread: reads under shared_lock, but lock releases before returning view
+    /// err: returns empty string_view on out-of-range id
     [[nodiscard]] std::string_view lookup(std::uint32_t id) const {
         std::shared_lock<std::shared_mutex> lock(mutex_);
         if (id < idToStr_.size()) {
@@ -84,7 +104,12 @@ public:
         return {};
     }
 
-    // Thread-safe owning copy under read lock.
+    /// thread-safe string accessor returning owned copy under read lock
+    /// in: 32-bit interned string id
+    /// out: owned std::string copy, or empty string if id is out of bounds
+    /// own: caller owns returned copy
+    /// thread: thread-safe under shared_lock
+    /// err: returns empty string on out-of-range id
     [[nodiscard]] std::string lookupCopy(std::uint32_t id) const {
         std::shared_lock<std::shared_mutex> lock(mutex_);
         if (id < idToStr_.size()) {
@@ -93,7 +118,11 @@ public:
         return {};
     }
 
-    // Thread-safe buffer assignment under read lock.
+    /// thread-safe string accessor copying into destination buffer under read lock
+    /// in: 32-bit interned string id, destination string reference
+    /// out: true if found and copied, false if id is out of bounds
+    /// own: copies bytes into caller-provided out buffer
+    /// thread: thread-safe under shared_lock
     bool lookup(std::uint32_t id, std::string& out) const {
         std::shared_lock<std::shared_mutex> lock(mutex_);
         if (id < idToStr_.size()) {
@@ -103,10 +132,12 @@ public:
         return false;
     }
 
-    // Zero-allocation scoped inspection accessor: holds the read lock during callback execution.
-    // CONTRACT: The callback `fn` MUST NOT invoke mutating methods (such as intern() or clear())
-    // on the same StringPool instance, as std::shared_mutex is not recursive and attempting to
-    // acquire an exclusive lock while holding a shared lock will result in deadlock.
+    /// scoped string inspection holding read lock across callback execution
+    /// inv: zero heap allocations; view remains valid throughout callback
+    /// in: 32-bit id, callback fn(std::string_view)
+    /// out: true if id found and callback executed, false if id out of bounds
+    /// own: callback receives borrowed view valid during execution
+    /// thread: shared_lock held during callback; fn must not call intern/clear
     template <typename F> bool withString(std::uint32_t id, F&& fn) const {
         std::shared_lock<std::shared_mutex> lock(mutex_);
         if (id < idToStr_.size()) {
@@ -116,18 +147,32 @@ public:
         return false;
     }
 
+    /// current number of unique strings interned in the pool
+    /// out: total unique string count
+    /// thread: thread-safe under shared_lock
+    /// err: noexcept
     [[nodiscard]] std::size_t size() const noexcept {
         std::shared_lock<std::shared_mutex> lock(mutex_);
         return idToStr_.size();
     }
 
+    /// clear all interned strings and reset dictionary mappings
+    /// inv: invalidates all previously issued ids and borrowed string_views
+    /// thread: thread-safe under unique_lock
+    /// err: noexcept
     void clear() noexcept {
         std::unique_lock<std::shared_mutex> lock(mutex_);
         strToId_.clear();
         idToStr_.clear();
     }
 
-    // Garbage collection: purges strings not present in activeIds set, reindexing compactly.
+    /// purge strings not present in activeIds set and reindex ids compactly
+    /// inv: active surviving strings receive contiguous ids in range [0..M-1]
+    /// in: activeIds set supporting .find(id) != .end()
+    /// out: StringPoolStats recording before, after, and purged string counts
+    /// own: reorganizes internal maps in place; invalidates prior views
+    /// thread: thread-safe under unique_lock
+    /// err: noexcept(false) on allocation failure
     template <typename SetType> StringPoolStats gc(const SetType& activeIds) {
         std::unique_lock<std::shared_mutex> lock(mutex_);
         StringPoolStats stats;

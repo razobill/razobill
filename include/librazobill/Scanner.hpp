@@ -1,15 +1,9 @@
-// High-performance normative tokenizer and lexical finite-state machine.
-// Scans byte-wise without dynamic memory allocation or backtracking.
-//
-// ARCHITECTURE: Why No Regular Expressions (Regex)?
-// Some developers say: "I need to parse logs, I will write a regex."
-// Now they have two problems, 50k msgs/sec throughput, and an overheating CPU core.
-// Standard PCRE / std::regex engines allocate graph state nodes and suffer from backtracking.
-//
-// Here, we use a compile-time constexpr 256-byte classification table (`detail::kClass`).
-// Every character's classification (delimiter, digit, alpha, control) is resolved
-// by a single L1-cached byte lookup: `kClass[*p]`.
-// The scanner runs in strictly linear O(N) time with zero dynamic heap allocation.
+// =============================================================================
+//  file : include/librazobill/Scanner.hpp
+//  role : zero-allocation single-pass lexical tokenizer and integer validator
+//  inv  : linear O(N) scan; zero heap allocation; exact lossless tokenization
+// =============================================================================
+
 #pragma once
 
 #include <algorithm>
@@ -22,31 +16,33 @@
 
 namespace razobill::core {
 
-// ASCII control bytes used for internal form key formatting.
-//
-// DECISION: Why not '{}' or '%s' or '<*>'?
-// Because raw server logs frequently contain literal '{}', '%s', or '<*>' (e.g. JSON strings, C format strings).
-// Using invisible ASCII control codes:
-//   0x12 (Device Control 2) = Slot Placeholder
-//   0x13 (Device Control 3) = Type Separator
-// guarantees zero collision with printable text. If an adversarial log line happens
-// to contain 0x11..0x13, our escape hatch safely wraps it without crashing.
-inline constexpr unsigned char kPlaceholder = 0x12;   // marks a variable slot inside a skeleton
-inline constexpr unsigned char kTypeSeparator = 0x13; // separates skeleton from type string in a form key
+// -- control framing bytes and scanning modes ---------------------------------
+
+/// ASCII control bytes used for internal form key framing
+/// 0x12 (Device Control 2) marks variable slots in skeleton strings
+/// 0x13 (Device Control 3) separates skeleton string from type signature
+/// non-printable control bytes eliminate collision with literal '{}' or '<*>'
+inline constexpr unsigned char kPlaceholder = 0x12;
+inline constexpr unsigned char kTypeSeparator = 0x13;
+
+/// maximum allowed message size (16 MB)
 inline constexpr std::size_t kMaxMessageBytes = std::size_t{16} << 20;
 
+/// tokenization strategy governing variable slot extraction
 enum class ScanMode : std::uint8_t {
-    Exact = 0,     // Pure digit-bearing variable tokens
-    DigitOnly = 0, // Alias for Exact
-    Semantic = 1   // Multi-modal: digits, key-value assignments, network hosts, paths, contextual keywords
+    Exact = 0,     // strict digit-bearing variable tokens only
+    DigitOnly = 0, // legacy alias for Exact
+    Semantic = 1   // multi-modal: digits, key-values, paths, and context keywords
 };
+
+// -- character classification table -------------------------------------------
 
 namespace detail {
 
 inline constexpr unsigned char kDelim = 1, kDigit = 2, kReserved = 4, kAlpha = 8;
 
-// Compile-time precomputed 256-element ASCII classifier array.
-// Evaluated during compilation by constexpr; resides in read-only .rodata.
+/// precompute 256-entry character classification lookup table at compile time
+/// inv: replaces runtime conditionals with an L1 cached table lookup
 constexpr std::array<unsigned char, 256> makeClasses() {
     std::array<unsigned char, 256> t{};
     for (char c :
@@ -59,7 +55,7 @@ constexpr std::array<unsigned char, 256> makeClasses() {
     for (unsigned c = 'A'; c <= 'Z'; ++c)
         t[c] = kAlpha;
     t['_'] = kAlpha;
-    // Bytes 0x11..0x13 are reserved for internal form key framing. Messages containing one are escaped.
+    // Bytes 0x11..0x13 are reserved for form key framing; triggers escape mode
     for (unsigned c = 0x11; c <= 0x13; ++c)
         t[c] = kReserved;
     return t;
@@ -67,11 +63,15 @@ constexpr std::array<unsigned char, 256> makeClasses() {
 
 inline constexpr std::array<unsigned char, 256> kClass = makeClasses();
 
-// Context keyword detector (e.g., "user", "from", "for", "host").
-// If a word like "user" precedes a non-numeric token ("alice"), Semantic mode
-// knows "alice" is a variable parameter rather than static template syntax!
+// -- context keywords ---------------------------------------------------------
+
+/// maximum supported context keyword character length
 inline constexpr std::size_t kMaxKeywordLen = 10;
 
+/// check whether word matches a contextual semantic keyword
+/// in: w candidate keyword string view
+/// out: true if lowercase normalized word matches known semantic keyword
+/// thread: pure, thread-safe, noexcept
 inline bool isContextKeyword(std::string_view w) noexcept {
     if (w.size() < 2 || w.size() > kMaxKeywordLen) return false;
     std::array<char, 12> buf{};
@@ -89,12 +89,21 @@ inline bool isContextKeyword(std::string_view w) noexcept {
 
 } // namespace detail
 
+// -- single-pass tokenizer ----------------------------------------------------
+
+/// result of a single-pass tokenization scan
 struct ScanResult {
-    std::string_view tail; // constant text trailing after the final token
-    bool reserved;         // true if message contains reserved byte (0x11, 0x12, 0x13)
+    std::string_view tail; // constant text remaining after final extracted token
+    bool reserved;         // true if input contains reserved bytes (0x11..0x13)
 };
 
-// Zero-allocation single-pass scanner
+/// single-pass linear tokenizer splitting log line into gaps and tokens
+/// inv: zero heap allocations; tokens and gaps partition the input exactly
+/// in: m source message view, onToken callback(gap, token), mode scan mode
+/// out: ScanResult with tail view and reserved byte indicator
+/// own: all views passed to onToken and returned borrow directly from m
+/// thread: pure, reentrant, thread-safe
+/// err: noexcept conditional on onToken callback
 template <class OnToken>
 [[nodiscard]] inline ScanResult scan(std::string_view m, OnToken&& onToken,
                                      ScanMode mode = ScanMode::Semantic) noexcept(noexcept(onToken(m, m))) {
@@ -113,7 +122,7 @@ template <class OnToken>
             if (mode == ScanMode::Semantic && (*p == '"' || *p == '\'')) {
                 const unsigned char quote = *p;
                 if ((quote == '"' && p < unclosedDoubleQuoteEnd) || (quote == '\'' && p < unclosedSingleQuoteEnd)) {
-                    // Suffix already confirmed to have no matching unescaped closing quote; treat as regular delimiter
+                    // Suffix confirmed to have no matching unescaped closing quote
                     all |= detail::kClass[*p];
                     ++p;
                     continue;
@@ -141,7 +150,7 @@ template <class OnToken>
                     ++p;
             }
             if (p < end && *p == quote) {
-                ++p; // include closing quote
+                ++p; // Include closing quote
                 for (const auto* cp = qStart; cp < p; ++cp)
                     all |= detail::kClass[*cp];
                 const std::string_view tok(reinterpret_cast<const char*>(qStart), static_cast<std::size_t>(p - qStart));
@@ -198,12 +207,16 @@ template <class OnToken>
             (all & detail::kReserved) != 0};
 }
 
-// Decimal integer validator
-// DESIGN DECISION (F-SLOT-01):
-// Tokens with length <= 18 decimal digits (max 999,999,999,999,999,999) are guaranteed to strictly fit
-// within signed int64_t without overflow (INT64_MAX is 9,223,372,036,854,775,807, which is 19 digits).
-// Bounding at 18 digits avoids complex lexicographical comparisons against INT64_MAX on the critical
-// tokenizer hot path, safely categorizing larger numeric sequences into string slots without truncation.
+// -- integer slot validation --------------------------------------------------
+
+/// test whether token is a decimal integer representable in signed int64_t
+/// inv: preserves lossless invertibility:
+///      1. leading zeros rejected ("007" stays string) to prevent format loss
+///      2. signs (+/-) rejected ("-1" stays string) to avoid sign bit drop
+///      3. tokens > 18 digits rejected (fits under INT64_MAX without overflow)
+/// in: t token view
+/// out: true if token is strictly non-negative decimal integer <= 18 digits
+/// thread: pure, thread-safe, noexcept
 [[nodiscard]] constexpr bool isIntToken(std::string_view t) noexcept {
     if (t.empty() || t.size() > 18) return false;
     if (t.front() == '0') return t.size() == 1;

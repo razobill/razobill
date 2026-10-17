@@ -1,22 +1,9 @@
-// Hardware-accelerated vector and bit-manipulation scanning routines (AVX-512, AVX2, ARM NEON, SSE4.2, BMI2).
-//
-// PERF ARCHITECTURE:
-// In typical system logs, 70-80% of bytes are structural ASCII words (e.g., timestamps, log levels,
-// module names) separated by whitespace (' ', '\t', '\n', '\r').
-// A naive scalar loop compares 1 byte per cycle, suffering branch misprediction penalties
-// whenever a token ends.
-//
-// MULTI-ARCHITECTURE VECTORIZATION:
-// 1. AVX-512BW: Loads 64 bytes in parallel into 512-bit ZMM registers (`_mm512_loadu_si512`),
-//    compares all 64 bytes simultaneously (`_mm512_cmpeq_epi8_mask`), and extracts matches in 1 cycle via `_tzcnt_u64`.
-// 2. AVX2: Loads 32 bytes into 256-bit YMM registers (`_mm256_loadu_si256`), compares 32 bytes in parallel,
-//    collapses masks into a 32-bit scalar (`_mm256_movemask_epi8`), and traverses via `tzcnt`.
-// 3. ARM NEON: Loads 16 bytes into 128-bit vector registers (`uint8x16_t`), reduces masks with narrowing shifts
-// (`vshrn_n_u16`),
-//    and locates delimiters via `rbit` + `clz`.
-// 4. Dynamic Multi-Version Dispatcher: Queries hardware CPUID at runtime (`detectSimdArchitecture()`)
-//    to dynamically unlock AVX-512 on server CPUs (Intel Sapphire Rapids, AMD EPYC Genoa) without crashing on older
-//    hardware.
+// =============================================================================
+//  file : include/librazobill/SimdScanner.hpp
+//  role : vectorized delimiter scanner routines (AVX-512, AVX2, NEON, Scalar)
+//  inv  : vector lanes and scalar tail produce bit-identical delimiter indices
+// =============================================================================
+
 #pragma once
 
 #include <bit>
@@ -38,18 +25,24 @@
 
 namespace razobill::core::simd {
 
-/// Supported hardware vector acceleration tiers.
+// -- hardware architecture tiers and bit manipulation -------------------------
+
+/// supported hardware vector acceleration instruction sets
 enum class SimdArchitecture : std::uint8_t { Scalar = 0, Neon = 1, Avx2 = 2, Avx512 = 3 };
 
-// Branchless count-trailing-zeros for fast bitmask index location.
-// Uses std::countr_zero from C++20 <bit> to guarantee branchless, UB-free
-// trailing zero extraction across x86-64 (tzcnt/bsf) and ARM64 (rbit+clz).
-// Returns 64 if mask == 0.
+/// count trailing zeros in 64-bit mask using branchless CPU instruction
+/// in: 64-bit bitmask
+/// out: index of first set bit, or 64 if mask == 0
+/// thread: pure, thread-safe, noexcept
 [[nodiscard]] inline int countTrailingZeros64(std::uint64_t mask) noexcept {
     return std::countr_zero(mask);
 }
 
-/// Dynamically detects the available SIMD instruction set via runtime CPUID / feature checks.
+// -- runtime architecture detection -------------------------------------------
+
+/// detect available SIMD instruction set via CPUID or compile-time target
+/// out: highest supported SimdArchitecture tier on current CPU
+/// thread: pure, thread-safe, noexcept
 [[nodiscard]] inline SimdArchitecture detectSimdArchitecture() noexcept {
 #if (defined(__x86_64__) || defined(_M_X64))
 #if defined(__GNUC__) || defined(__clang__)
@@ -101,18 +94,24 @@ enum class SimdArchitecture : std::uint8_t { Scalar = 0, Neon = 1, Avx2 = 2, Avx
 }
 
 namespace detail {
-/// Hoisted process-level SIMD architecture cache to eliminate magic static thread guard checks on hot path.
+/// process-level cached SIMD architecture eliminating repeated CPUID calls
 inline const SimdArchitecture kSimdArch = detectSimdArchitecture();
 } // namespace detail
 
-// Forward declarations for multi-tier SIMD scanners
+// -- multi-tier vectorized scanners -------------------------------------------
+
 [[nodiscard]] inline std::size_t findWhitespaceAvx2(const char* data, std::size_t length) noexcept;
 [[nodiscard]] inline std::size_t findWhitespaceAvx512(const char* data, std::size_t length) noexcept;
 [[nodiscard]] inline std::size_t findWhitespaceNeon(const char* data, std::size_t length) noexcept;
 [[nodiscard]] inline std::size_t findWhitespaceDynamic(const char* data, std::size_t length) noexcept;
 [[nodiscard]] inline std::size_t findWhitespace(const char* data, std::size_t length) noexcept;
 
-// Scans up to 32 bytes at once using AVX2 for spaces, tabs, or newlines.
+/// scan up to 32 bytes per iteration using AVX2 256-bit YMM registers
+/// inv: scalar tail loop processes trailing <32 bytes; matches scalar result
+/// in: data pointer to ASCII byte buffer, length buffer byte length
+/// out: offset of first delimiter (' ', '\t', '\n', '\r'), or length if none
+/// own: borrows buffer pointed to by data
+/// thread: pure, thread-safe, noexcept
 [[nodiscard]]
 #if (defined(__GNUC__) || defined(__clang__)) && (defined(__x86_64__) || defined(_M_X64))
 __attribute__((target("avx2")))
@@ -154,8 +153,12 @@ inline std::size_t findWhitespaceAvx2(const char* data, std::size_t length) noex
 #endif
 }
 
-// Scans up to 64 bytes at once using AVX-512BW for spaces, tabs, or newlines.
-// Unlocks 64-byte vector throughput on Intel Xeon Scalable and AMD EPYC server chips.
+/// scan up to 64 bytes per iteration using AVX-512BW 512-bit ZMM registers
+/// inv: scalar tail loop processes trailing <64 bytes; matches scalar result
+/// in: data pointer to ASCII byte buffer, length buffer byte length
+/// out: offset of first delimiter (' ', '\t', '\n', '\r'), or length if none
+/// own: borrows buffer pointed to by data
+/// thread: pure, thread-safe, noexcept
 [[nodiscard]]
 #if (defined(__GNUC__) || defined(__clang__)) && (defined(__x86_64__) || defined(_M_X64))
 __attribute__((target("avx512bw,avx512f")))
@@ -192,8 +195,12 @@ inline std::size_t findWhitespaceAvx512(const char* data, std::size_t length) no
 #endif
 }
 
-// Scans up to 16 bytes at once using ARM NEON for spaces, tabs, or newlines.
-// Optimized for Apple Silicon (M1/M2/M3/M4) and AWS Graviton 2/3/4 (ARM Neoverse).
+/// scan up to 16 bytes per iteration using ARM NEON 128-bit vector registers
+/// inv: scalar tail loop processes trailing <16 bytes; matches scalar result
+/// in: data pointer to ASCII byte buffer, length buffer byte length
+/// out: offset of first delimiter (' ', '\t', '\n', '\r'), or length if none
+/// own: borrows buffer pointed to by data
+/// thread: pure, thread-safe, noexcept
 [[nodiscard]] inline std::size_t findWhitespaceNeon(const char* data, std::size_t length) noexcept {
 #if defined(__ARM_NEON) || defined(__aarch64__) || defined(_M_ARM64)
     std::size_t i = 0;
@@ -242,8 +249,13 @@ inline std::size_t findWhitespaceAvx512(const char* data, std::size_t length) no
 #endif
 }
 
-/// Dynamic runtime function dispatcher: automatically selects the best SIMD implementation
-/// for the current host CPU at runtime without crashing.
+// -- dynamic dispatch and unified entry point ---------------------------------
+
+/// dispatch delimiter search dynamically based on runtime CPU architecture
+/// in: data pointer to ASCII byte buffer, length buffer byte length
+/// out: offset of first delimiter (' ', '\t', '\n', '\r'), or length if none
+/// own: borrows buffer pointed to by data
+/// thread: pure, thread-safe, noexcept
 [[nodiscard]] inline std::size_t findWhitespaceDynamic(const char* data, std::size_t length) noexcept {
     switch (detail::kSimdArch) {
     case SimdArchitecture::Avx512:
@@ -262,9 +274,12 @@ inline std::size_t findWhitespaceAvx512(const char* data, std::size_t length) no
     }
 }
 
-/// Unified multi-architecture SIMD delimiter scanner.
-/// Automatically dispatches inline when target architecture is fixed at compile time,
-/// or routes through findWhitespaceDynamic() for universal compatibility.
+/// unified delimiter search with compile-time or runtime dispatch
+/// inv: bit-identical results across all hardware instruction set paths
+/// in: data pointer to ASCII byte buffer, length buffer byte length
+/// out: offset of first delimiter (' ', '\t', '\n', '\r'), or length if none
+/// own: borrows buffer pointed to by data
+/// thread: pure, thread-safe, noexcept
 [[nodiscard]] inline std::size_t findWhitespace(const char* data, std::size_t length) noexcept {
 #if defined(__AVX512BW__) && defined(__AVX512F__)
     return findWhitespaceAvx512(data, length);

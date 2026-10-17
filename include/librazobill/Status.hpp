@@ -1,22 +1,21 @@
-// Status codes of the data plane.
-// Pure, deterministic, zero-allocation error reporting.
-//
-// ARCHITECTURE: Why No C++ Exceptions on the Data Plane?
-// Throwing a C++ exception takes ~2,000 to 7,000 nanoseconds because the CPU must unwind
-// the stack, read DWARF exception tables (.eh_frame), and allocate heap memory.
-// In a high-throughput stream processing 70M msgs/sec, that is catastrophic.
-//
-// By using `enum class Status : unsigned char`, every return code fits inside an 8-bit
-// CPU register (`%al`). Branches predict perfectly and errors cost zero heap allocations.
-// Deterministic error handling:
-// When malformed logs occur in high-throughput streams, returning a compact 1-byte
-// enum maintains steady-state cache performance without invoking stack unwinders.
+// =============================================================================
+//  file : include/librazobill/Status.hpp
+//  role : zero-allocation status codes and error descriptions for the data plane
+//  inv  : Status fits in an 8-bit unsigned char register; never throws
+// =============================================================================
+
 #pragma once
 
 #include <ostream>
 
 namespace razobill {
 
+// Zero-allocation error reporting for the engine hot path.
+// Passing a 1-byte enum class fits directly inside an 8-bit CPU register (%al),
+// keeping error propagation branch-predictable and eliminating stack unwinding.
+
+/// result status codes for engine and slot operations
+/// inv: Ok is 0; fits in single unsigned byte
 enum class Status : unsigned char {
     Ok = 0,
     TooLarge,       // message or rebuilt message exceeds kMaxMessageBytes (16 MB)
@@ -27,6 +26,11 @@ enum class Status : unsigned char {
     InvalidParam    // null pointer or out-of-range argument
 };
 
+/// returns static human-readable description for a status code
+/// in: s status code
+/// out: pointer to static constant NUL-terminated string
+/// own: static storage, caller must not free
+/// thread: pure constexpr, noexcept
 [[nodiscard]] constexpr const char* describe(Status s) noexcept {
     switch (s) {
     case Status::Ok:
@@ -48,6 +52,7 @@ enum class Status : unsigned char {
     }
 }
 
+/// streams human-readable status description into an output stream
 inline std::ostream& operator<<(std::ostream& os, Status s) {
     return os << describe(s);
 }

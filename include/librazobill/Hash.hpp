@@ -1,16 +1,18 @@
-// XXH64, seed 0 (Yann Collet's formal specification).
-// Byte-identical to ClickHouse's xxHash64(), so a form's id is the same across engines and architectures.
+// =============================================================================
+//  file : include/librazobill/Hash.hpp
+//  role : standalone xxHash64 implementation with seed 0 for form hashing
+//  inv  : bit-identical to ClickHouse xxHash64() and Python RzHash
+// =============================================================================
+
+// Standalone xxHash64 implementation with seed 0.
+// Bit-identical to ClickHouse xxHash64() and pyrazobill RzHash.
+// Parity pinned by tests/IntegrationChdb.cpp and lib/python/tests/TestPyRazobill.py.
 //
-// DECISION: Why xxHash64 over Wyhash or SipHash?
-// 1. Bit-Exact Interop: ClickHouse natively exposes `xxHash64()` as a fast C++ UDF.
-//    By using exact xxHash64 with Seed 0, our C++ core, our Python extension, and
-//    ClickHouse materialized columns calculate IDENTICAL 64-bit partition keys!
-// 2. High-Avalanche Distribution: Passes SMHasher with flying colors; 0 collision rate
-//    observed across 70 million production logs.
-// 3. Speed: Consistently reaches 3.2+ GB/sec per core on modern x86 silicon.
-//
-// NOTE: Do not change seed 0 unless you want your ClickHouse tables and DuckDB catalogs
-// to have an existential crisis when joining on form hashes.
+// DESIGN RATIONALE:
+// Form hashes serve as distributed partition keys across C++, DuckDB, and ClickHouse.
+// Standardizing on Yann Collet's xxHash64 specification with seed 0 guarantees that
+// hash values computed on ingest match database indexes without translation.
+
 #pragma once
 
 #include <bit>
@@ -21,21 +23,20 @@
 
 namespace razobill::core {
 
+/// computes 64-bit xxHash64 with seed 0 over a byte slice
+/// inv: bit-identical to ClickHouse xxHash64() and Python RzHash; pinned by tests/IntegrationChdb.cpp
+/// in: s is arbitrary byte view, valid or invalid UTF-8
+/// out: 64-bit unsigned hash integer
+/// thread: pure, reentrant, noexcept
 [[nodiscard]] inline std::uint64_t xxh64(std::string_view s) noexcept {
-    // Prime numbers derived from the golden ratio fractional expansion (Yann Collet).
-    // These constants provide maximum bit-diffusion and prime-periodicity.
+    // prime constants derived from golden ratio expansion for maximum bit diffusion
     constexpr std::uint64_t P1 = 11400714785074694791ULL; // 0x9E3779B185EBCA87
     constexpr std::uint64_t P2 = 14029467366897019727ULL; // 0xC2B2AE3D27D4EB4F
     constexpr std::uint64_t P3 = 1609587929392839161ULL;  // 0x165667B19E3779F9
     constexpr std::uint64_t P4 = 9650029242287828579ULL;  // 0x85EBCA77C2B2AE63
     constexpr std::uint64_t P5 = 2870177450012600261ULL;  // 0x27D4EB2F165667C5
 
-    // PERF TRIVIA:
-    // We use std::memcpy to read 64-bit and 32-bit words from potentially unaligned char pointers.
-    // On x86-64, unaligned loads have zero latency penalty on modern cores.
-    // In C++, dereferencing `reinterpret_cast<uint64_t*>(p)` on unaligned memory is technically
-    // Undefined Behavior (UB) and crashes on ARM. Modern GCC/Clang optimize std::memcpy(&v, p, 8)
-    // into a single machine `mov` instruction. Clean, safe, zero-cost!
+    // std::memcpy handles unaligned memory accesses cleanly without undefined behavior
     auto rd64 = [](const char* p) noexcept -> std::uint64_t {
         std::uint64_t v = 0;
         std::memcpy(&v, p, 8);

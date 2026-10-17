@@ -1,22 +1,9 @@
-// ThreadPool: Cache-aware parallel worker pool for multi-core chunked processing.
-//
-// CONCURRENCY & MECHANICAL SYMPATHY:
-// When parsing 70+ million messages across 12 cores, how you schedule work determines whether
-// you get 2 million msgs/sec or 69 million msgs/sec.
-//
-// THE ROOKIE MISTAKE:
-// Dispatching 1 task per log line into a thread pool. A mutex lock takes ~15-25 nanoseconds.
-// If your parsing routine takes 100 nanoseconds, workers spend 20% of their time fighting
-// over the queue mutex!
-//
-// THE HARDENED APPROACH:
-// We use `parallelFor` with coarse chunks (e.g. 5,000 to 10,000 items per chunk).
-// A worker locks the queue ONCE, grabs a 10,000-line span, and crunches through it
-// at full SIMD L1 cache bandwidth with ZERO cross-thread synchronization.
-//
-// JOKE:
-// Never acquire a mutex inside a per-row loop unless you want your hardware threads
-// to spend their working hours queuing up at the DMV.
+// =============================================================================
+//  file : include/librazobill/ThreadPool.hpp
+//  role : cache-aware worker thread pool for chunked parallel execution
+//  inv  : coarse chunking amortizes queue mutex; joins all workers on shutdown
+// =============================================================================
+
 #pragma once
 
 #include <atomic>
@@ -31,10 +18,17 @@
 
 namespace razobill::core {
 
+// -- worker thread pool -------------------------------------------------------
+
+/// multi-core worker pool amortizing task synchronization across coarse chunks
+/// inv: joins all active worker threads upon destruction; exception safe
 class ThreadPool {
 public:
-    // Auto-detects available hardware threads (logical cores).
-    // If the OS returns 0 (can happen in weird containerized cgroups), safely fall back to 1.
+    /// initialize worker threads with hardware concurrency or specified count
+    /// in: threadCount number of threads (0 falls back to 1)
+    /// own: pool manages thread lifecycle and joins workers on destruction
+    /// thread: launches background worker threads
+    /// err: joins launched workers and rethrows if thread spawn fails
     explicit ThreadPool(std::size_t threadCount = std::thread::hardware_concurrency()) : stopping_(false) {
         if (threadCount == 0) threadCount = 1;
         try {
@@ -53,7 +47,7 @@ public:
                         try {
                             task();
                         } catch (...) {
-                            // Ensure worker thread does not crash the host process via std::terminate()
+                            // Suppress task exceptions to prevent std::terminate on worker thread
                         }
                     }
                 });
@@ -71,6 +65,9 @@ public:
         }
     }
 
+    /// signal shutdown and join all worker threads
+    /// inv: drains remaining tasks or exits cleanly; joins all threads
+    /// thread: thread-safe, acquires internal mutex
     ~ThreadPool() {
         {
             std::unique_lock<std::mutex> lock(mutex_);
@@ -85,6 +82,11 @@ public:
     ThreadPool(const ThreadPool&) = delete;
     ThreadPool& operator=(const ThreadPool&) = delete;
 
+    /// submit nullary callable to the task queue
+    /// in: callable f
+    /// out: std::future holding return value of f
+    /// thread: thread-safe under mutex lock
+    /// err: throws std::runtime_error if pool is stopping
     template <typename F> auto submit(F&& f) -> std::future<typename std::invoke_result<F>::type> {
         using ReturnType = typename std::invoke_result<F>::type;
         auto task = std::make_shared<std::packaged_task<ReturnType()>>(std::forward<F>(f));
@@ -98,6 +100,11 @@ public:
         return res;
     }
 
+    /// submit callable and arguments to the task queue
+    /// in: callable f and bound arguments args
+    /// out: std::future holding return value of f(args...)
+    /// thread: thread-safe under mutex lock
+    /// err: throws std::runtime_error if pool is stopping
     template <typename F, typename... Args>
         requires(sizeof...(Args) > 0)
     auto submit(F&& f, Args&&... args)
@@ -115,6 +122,11 @@ public:
         return res;
     }
 
+    /// execute chunked parallel iteration over range [0..total)
+    /// inv: chunking amortizes mutex acquisition; runs single-threaded if total <= chunkSize
+    /// in: total item count, chunkSize (0 auto-computes even partition), fn(start, end)
+    /// thread: blocks caller until all chunks complete; chunks run concurrently
+    /// err: captures chunk exceptions and rethrows the first caught exception
     template <typename F> void parallelFor(std::size_t total, std::size_t chunkSize, F&& fn) {
         if (total == 0) return;
         if (chunkSize == 0) {
@@ -156,6 +168,7 @@ public:
         }
     }
 
+    /// count of background worker threads in the pool
     [[nodiscard]] std::size_t workerCount() const noexcept { return workers_.size(); }
 
 private:

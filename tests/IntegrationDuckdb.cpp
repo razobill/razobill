@@ -1,19 +1,10 @@
-// ==============================================================================
-// Razobill End-to-End DuckDB ADBC Integration & Invariant Verification Suite
-// ==============================================================================
+// =============================================================================
+// end-to-end DuckDB ADBC integration and invariant verification suite
 //
-// INTEGRATION HARNESS & SCOPE:
-// Validates full database lifecycle execution against embedded DuckDB via Arrow
-// Database Connectivity (ADBC):
-// 1. Columnar Compaction Migration: `compact()` decomposes raw logs into typed slots
-//    (`logs_c`) and verifies bit-for-bit reconstruction over 134,815 events.
-// 2. Adversarial Edge Cases: Tests boundary behavior with Japanese Kanji, large 64-bit
-//    integers, repeated characters, embedded ASCII sentinels, tabs, and NULL values.
-// 3. Multi-Threaded Concurrency: Concurrently queries synthesized views while appending
-//    batches without locking contention or data race conditions.
-// 4. SQL Extension Scalar UDFs: Validates `rb_form`, `rb_ints`, `rb_strs`, `rbDecompose`,
-//    `rbEntropy`, and `rbMillerMadow` directly inside vectorized SQL query pipelines.
-// ==============================================================================
+// validates compact storage, adversarial edge cases, cross-engine conformance,
+// semantic ledger identities, SQL injection hardening, concurrency, dictionary
+// garbage collection, native UDFs vs SQL regexes, BLOBs, and transactions
+// =============================================================================
 
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <atomic>
@@ -59,6 +50,7 @@ void loadRaw(Backend& b, const char* name = "raw") {
 }
 } // namespace
 
+// pins exact reconstruction over 134,815 events and appendable re-compact
 TEST_CASE("compact mode: lossless, appendable, original columns restored") {
     if (!duckdbAvailable() || !corpusAvailable()) {
         MESSAGE("Skipping DuckDB corpus test: DuckDB driver or /tmp/corpus.parquet not present");
@@ -77,17 +69,14 @@ TEST_CASE("compact mode: lossless, appendable, original columns restored") {
     support::result("duckdb.compact.rows", static_cast<double>(n));
 }
 
+// pins byte-level round-trip over unicode, nulls, huge ints, and sentinels
 TEST_CASE("compact mode: adversarial rows survive") {
     if (!duckdbAvailable()) {
         MESSAGE("Skipping DuckDB test: DuckDB driver not present");
         return;
     }
-    // Robustness test:
-    // Testing boundary conditions and multi-byte encoding resilience:
-    // - Multibyte UTF-8 characters: '日本語 ログ 42 ünïcödé3'
-    // - Large integer values: '9223372036854775807'
-    // - ASCII control characters (0x11, 0x12, 0x13)
-    // - Consecutive tabs, spaces, negative numbers, and NULLs.
+    // robustness test:
+    // boundary conditions: unicode, large integers, and ASCII control bytes
     auto b = open();
     b->exec("CREATE TABLE edge(id INTEGER, msg VARCHAR)");
     b->exec("INSERT INTO edge VALUES (0, ''), (1, NULL), (2, 'no digits'), (3, '007 0 00 -5 1.5 1e5'), (4, "
@@ -102,6 +91,7 @@ TEST_CASE("compact mode: adversarial rows survive") {
     CHECK(b->query("SELECT msg = '' FROM e2 WHERE id = 0").i64(0, 0) == 1);
 }
 
+// pins bit-for-bit form key parity between DuckDB SQL functions and C++ core
 TEST_CASE("every stored form equals the C++ core's form (cross-implementation conformance)") {
     if (!duckdbAvailable() || !corpusAvailable()) {
         MESSAGE("Skipping DuckDB corpus test: DuckDB driver or /tmp/corpus.parquet not present");
@@ -132,6 +122,7 @@ TEST_CASE("every stored form equals the C++ core's form (cross-implementation co
     support::result("duckdb.forms", static_cast<double>(dbForms.size()));
 }
 
+// pins Theorem 1 ledger identities and JSD gate under DuckDB SQL execution
 TEST_CASE("meaning layer: gate, doubt, versions, ledger identities") {
     if (!duckdbAvailable() || !corpusAvailable()) {
         MESSAGE("Skipping DuckDB corpus test: DuckDB driver or /tmp/corpus.parquet not present");
@@ -197,6 +188,7 @@ TEST_CASE("meaning layer: gate, doubt, versions, ledger identities") {
     support::result("duckdb.leakage", rz.leakage());
 }
 
+// pins SQL injection immunity for malicious table names and regex patterns
 TEST_CASE("hardening: hostile identifiers and patterns never reach SQL unquoted") {
     if (!duckdbAvailable() || !corpusAvailable()) {
         MESSAGE("Skipping DuckDB corpus test: DuckDB driver or /tmp/corpus.parquet not present");
@@ -222,6 +214,7 @@ TEST_CASE("hardening: hostile identifiers and patterns never reach SQL unquoted"
     CHECK_THROWS_AS(noPurpose.define("X", "^a"), std::invalid_argument);
 }
 
+// pins concurrent read-write thread safety across shared engine instance
 TEST_CASE("one instance shared by many threads: calls serialize, results stay consistent") {
     if (!duckdbAvailable() || !corpusAvailable()) {
         MESSAGE("Skipping DuckDB corpus test: DuckDB driver or /tmp/corpus.parquet not present");
@@ -251,6 +244,7 @@ TEST_CASE("one instance shared by many threads: calls serialize, results stay co
     CHECK(bad == 0);
 }
 
+// pins additive mode ledger metrics and lossless round-trip on DuckDB
 TEST_CASE("additive mode on DuckDB") {
     if (!duckdbAvailable() || !corpusAvailable()) {
         MESSAGE("Skipping DuckDB corpus test: DuckDB driver or /tmp/corpus.parquet not present");
@@ -273,6 +267,7 @@ TEST_CASE("additive mode on DuckDB") {
     CHECK_THROWS_AS(rz.verify("raw"), std::logic_error);
 }
 
+// pins persistence and seamless resume across process/instance restarts
 TEST_CASE("DuckDB: a new instance resumes over existing compact storage (restart)") {
     if (!duckdbAvailable() || !corpusAvailable()) {
         MESSAGE("Skipping DuckDB corpus test: DuckDB driver or /tmp/corpus.parquet not present");
@@ -299,6 +294,7 @@ TEST_CASE("DuckDB: a new instance resumes over existing compact storage (restart
     CHECK(second.compact("raw") == 2 * 134815);
 }
 
+// pins dead token GC in string dictionary without breaking reconstruction
 TEST_CASE("dictionary garbage collection and compaction: purges dead strings and preserves lossless rebuild") {
     if (!duckdbAvailable()) {
         MESSAGE("Skipping DuckDB test: DuckDB driver not present");
@@ -330,6 +326,7 @@ TEST_CASE("dictionary garbage collection and compaction: purges dead strings and
     CHECK(rz.verify("ephem_kept") == 0);
 }
 
+// pins differential parity between native C++ UDFs and pure SQL regexes
 TEST_CASE("native functions equal the SQL regex specification (real logs + 60,000 random and adversarial messages)") {
     if (!duckdbAvailable() || !corpusAvailable()) {
         MESSAGE("Skipping DuckDB corpus test: DuckDB driver or /tmp/corpus.parquet not present");
@@ -436,6 +433,7 @@ TEST_CASE("native functions equal the SQL regex specification (real logs + 60,00
     support::result("duckdb.oracle.messages", static_cast<double>(n));
 }
 
+// pins semantic mode variable collapsing and exact round-trip in DuckDB
 TEST_CASE("semantic form extraction in DuckDB: collapses text variables and round-trips exactly") {
     if (!duckdbAvailable()) {
         MESSAGE("Skipping DuckDB test: DuckDB driver not present");
@@ -460,6 +458,7 @@ TEST_CASE("semantic form extraction in DuckDB: collapses text variables and roun
     CHECK(rz.verify("ssh_sample") == 0);
 }
 
+// pins RzSplit composite STRUCT decomposition in vectorized DuckDB queries
 TEST_CASE("composite struct decomposition in DuckDB SQL") {
     if (!duckdbAvailable()) {
         MESSAGE("Skipping DuckDB test: DuckDB driver not present");
@@ -471,7 +470,7 @@ TEST_CASE("composite struct decomposition in DuckDB SQL") {
             "('User admin logged in from 192.168.1.1 port 8080'), "
             "('User guest logged in from 10.0.0.1 port 22')");
 
-    // Verify RzSplit returns struct with template, ints, strs
+    // verify RzSplit returns struct with template, ints, strs
     auto res =
         b->query("SELECT (d).template, len((d).ints), len((d).strs) FROM (SELECT RzSplit(msg) AS d FROM decomp_test)");
     CHECK(res.rows.size() == 2);
@@ -481,7 +480,7 @@ TEST_CASE("composite struct decomposition in DuckDB SQL") {
                      .i64(0, 0);
     CHECK(match == 0);
 
-    // Verify NULL and empty string handling
+    // verify NULL and empty string handling
     CHECK(b->query("SELECT count(*) FROM (SELECT RzSplit(NULL) AS x) WHERE x IS NULL").i64(0, 0) == 1);
     CHECK(b->query("SELECT count(*) FROM (SELECT RzTemplate(NULL) AS x) WHERE x IS NULL").i64(0, 0) == 1);
     CHECK(b->query("SELECT count(*) FROM (SELECT RzJoin(NULL, [1]::BIGINT[], ['a']::VARCHAR[]) AS x) WHERE x IS NULL")
@@ -491,6 +490,7 @@ TEST_CASE("composite struct decomposition in DuckDB SQL") {
         1);
 }
 
+// pins raw binary BLOB round-trip over invalid UTF-8 byte sequences
 TEST_CASE("binary BLOB support in DuckDB: exact round-trip over invalid UTF-8 byte payloads") {
     if (!duckdbAvailable()) {
         MESSAGE("Skipping DuckDB test: DuckDB driver not present");
@@ -509,6 +509,7 @@ TEST_CASE("binary BLOB support in DuckDB: exact round-trip over invalid UTF-8 by
     CHECK(mismatches == 0);
 }
 
+// pins transactional rollback atomicity and config table synchronization
 TEST_CASE("control plane: config synchronization, transactional atomicity and batch todo") {
     if (!duckdbAvailable()) {
         MESSAGE("Skipping DuckDB test: DuckDB driver not present");

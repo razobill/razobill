@@ -1,6 +1,9 @@
-// ==============================================================================
-// Razobill libFuzzer Harness: Continuous Invariant & Memory Safety Verification
-// ==============================================================================
+// =============================================================================
+// libFuzzer and standalone randomized fuzz harness for decomposition roundtrip
+//
+// verifies exact join(split(x)) == x across librazobill C++, C ABI, and
+// semantic modes with adversarial byte mutation and 16MB ceiling enforcement
+// =============================================================================
 
 #include <atomic>
 #include <cassert>
@@ -18,9 +21,16 @@
 #include "librazobill/RazobillC.h"
 #include "librazobill/Slots.hpp"
 
+/// libFuzzer target executing full decompose and reconstruct roundtrip
+/// inv:    join(split(input)) == input across Exact, Semantic, and C ABI modes
+/// in:     arbitrary byte array data of length size
+/// out:    returns 0 on success; aborts immediately on invariant violation
+/// own:    borrows data buffer during test execution
+/// thread: thread-safe, independent allocations per invocation
+/// err:    aborts process via std::abort() on any round-trip divergence
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     if (size == 0 || size > razobill::core::kMaxMessageBytes) {
-        return 0; // Skip empty or excessive payloads (>16MB)
+        return 0; // skip empty or excessive payloads (>16MB)
     }
 
     const std::string_view input(reinterpret_cast<const char*>(data), size);
@@ -88,7 +98,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
             std::abort();
         }
 
-        // Buffer probing
+        // buffer probing
         size_t requiredLen = 0;
         const RzStatus probeCode = RzJoin(&crec, nullptr, 0, &requiredLen);
         if (probeCode != RZ_ERR_BUFFER_TOO_SMALL || requiredLen != size) {
@@ -97,7 +107,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
             std::abort();
         }
 
-        // Allocate exact buffer
+        // allocate exact buffer
         std::vector<char> buffer(size);
         size_t outLength = 0;
         const RzStatus joinCode = RzJoin(&crec, buffer.data(), buffer.size(), &outLength);
@@ -122,6 +132,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 }
 
 #if !defined(LIBRAZOBILL_USE_LIBFUZZER) && !defined(FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION)
+/// standalone multi-threaded fuzzing harness for non-libFuzzer environments
+/// in:  optional -runs=N command line argument
+/// out: exit code 0 on clean completion; aborts on invariant violation
 int main(int argc, char** argv) {
     const std::vector<std::string> testCases = {
         "Simple log line without digits",

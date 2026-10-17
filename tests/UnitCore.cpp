@@ -1,4 +1,12 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+
+// =============================================================================
+//  file : tests/UnitCore.cpp
+//  role : core unit test suite for lossless roundtrip and slot invariants
+//  inv  : reconstruct(tmpl, ints, strs) == original for all test cases
+//  deps : "doctest.h", "librazobill/Slots.hpp"
+//  ~    : roundtripping 300,000 randomized byte runs to prove the iron law
+// =============================================================================
 #include <ostream>
 #include <random>
 #include <string>
@@ -10,17 +18,12 @@
 #include "librazobill/ThreadPool.hpp"
 #include "librazobill/Version.hpp"
 
-// TEST PHILOSOPHY:
-// If a unit test doesn't fail when someone breaks an invariant, it is not a test—it is performance art.
-// Here we verify:
-// 1. Exact byte-for-byte lossless roundtripping: reconstruct(parse(m)) == m
-// 2. High-entropy UUID, IP, and hex word preservation.
-// 3. Absence of memory corruption when pathological logs throw emojis, escaped nulls, and 10MB payloads.
+// pins core invariants: exact invertibility, slot bounds, scanner parity
 using namespace razobill;
 using namespace razobill::core;
 
 namespace {
-// The Iron Law: Every parse must round-trip with zero bit-level discrepancies
+// helper performing roundtrip split and join, asserting join(split(msg)) == msg
 std::string roundtrip(std::string_view msg, std::string* formOut = nullptr, ScanMode mode = ScanMode::DigitOnly) {
     SlotRecord s;
     REQUIRE(parse(msg, s, mode) == Status::Ok);
@@ -32,6 +35,9 @@ std::string roundtrip(std::string_view msg, std::string* formOut = nullptr, Scan
 }
 } // namespace
 
+// -- core round-trip and syntax verification ----------------------------------
+
+// pins exact reconstruction and slot extraction for standard tokens
 TEST_CASE("form keys of ordinary messages") {
     std::string f;
     CHECK(roundtrip("Receiving block blk_-1608999687919862906 src: /10.250.19.102:54106 dest: /10.250.19.102:50010",
@@ -45,6 +51,7 @@ TEST_CASE("form keys of ordinary messages") {
     CHECK(f == "{i}");
 }
 
+// pins semantic variable extraction for keywords, key-values, and quotes
 TEST_CASE("semantic text variables without digits eliminate over-splitting") {
     std::string f1, f2, f3;
     // Contextual variable (following 'for'):
@@ -76,6 +83,7 @@ TEST_CASE("semantic text variables without digits eliminate over-splitting") {
     CHECK(q1 == "error: {s} in job");
 }
 
+// pins integer token boundaries: 1-18 digits, no leading zeros or signs
 TEST_CASE("integer rule") {
     for (auto [tok, isInt] : std::initializer_list<std::pair<const char*, bool>>{{"0", true},
                                                                                  {"7", true},
@@ -92,6 +100,7 @@ TEST_CASE("integer rule") {
         CHECK_MESSAGE(isIntToken(tok) == isInt, tok);
 }
 
+// pins delimiter matching for RE2 whitespace and punctuation classes
 TEST_CASE("delimiters follow the RE2 class") {
     std::string f;
     roundtrip("a=1,b=2;c:3 (4) [5] {6} \"7\" '8' <9> |10| /11/", &f);
@@ -102,6 +111,7 @@ TEST_CASE("delimiters follow the RE2 class") {
     CHECK(f == "{s} {s}");
 }
 
+// pins payload transparency for internal framing bytes 0x11..0x13
 TEST_CASE("escape hatch for reserved bytes") {
     for (const char* m : {"x \x11 y 1", "x \x12 y 1", "x \x13 y 1"}) {
         std::string f;
@@ -109,6 +119,7 @@ TEST_CASE("escape hatch for reserved bytes") {
     }
 }
 
+// pins lossless round-trip on empty, 1MB, embedded NUL, and UTF-8 inputs
 TEST_CASE("empty and adversarial inputs") {
     CHECK(roundtrip(std::string(1 << 20, '1')).size() == (1u << 20));
     CHECK(roundtrip(std::string(100000, ' ') + "1").size() == 100001);
@@ -119,6 +130,7 @@ TEST_CASE("empty and adversarial inputs") {
     CHECK(roundtrip(utf8) == utf8);
 }
 
+// pins 16 MiB message size ceiling enforcement on parse and reconstruction
 TEST_CASE("size limits") {
     SlotRecord s;
     std::string big(kMaxMessageBytes + 1, 'a');
@@ -133,6 +145,7 @@ TEST_CASE("size limits") {
     CHECK(reconstruct(form2, {}, two, out) == Status::TooLarge);
 }
 
+// pins malformed template detection and slot underflow/overflow bounds
 TEST_CASE("reconstruct rejects corrupt input without touching memory it should not") {
     std::string out;
     std::vector<std::int64_t> ints{1};
@@ -148,13 +161,14 @@ TEST_CASE("reconstruct rejects corrupt input without touching memory it should n
     CHECK(reconstruct(std::string("\x12\x13I"), neg, noStrs, out) == Status::Malformed);
     CHECK(reconstruct(std::string("\x12\x13I"), ints, noStrs, out) == Status::Ok);
     CHECK(out == "1");
-    // Excess string or integer parameters produce SlotOverflow under unified contract
+    // excess string or int parameters produce SlotOverflow under contract
     CHECK(reconstruct(std::string("\x12\x13I"), ints, strs, out) == Status::SlotOverflow);
     std::vector<std::int64_t> padded{5, 99, 99};
     CHECK(reconstruct(std::string("a \x12\x13I"), padded, noStrs, out) == Status::SlotOverflow);
     CHECK(reconstruct("a {i}", padded, noStrs, out) == Status::SlotOverflow);
 }
 
+// pins templateOf conversion to <*> with brace unescape and validation
 TEST_CASE("templateOf") {
     std::string t;
     // Legacy format
@@ -169,7 +183,7 @@ TEST_CASE("templateOf") {
     // Plain string without placeholders
     CHECK(templateOf("system initialized successfully", t) == Status::Ok);
     CHECK(t == "system initialized successfully");
-    // Malformed syntax: unclosed brace, invalid placeholder, stray brace, reserved control characters
+    // malformed syntax: unclosed brace, invalid placeholder, stray brace
     CHECK(templateOf("junk {", t) == Status::Malformed);
     CHECK(templateOf("junk {x}", t) == Status::Malformed);
     CHECK(templateOf("junk }", t) == Status::Malformed);
@@ -177,12 +191,16 @@ TEST_CASE("templateOf") {
     CHECK(templateOf(std::string("bad \x13 char"), t) == Status::Malformed);
 }
 
+// pins bitwise trailing zero count across boundary masks (0, 1, and MSB)
 TEST_CASE("SimdScanner: countTrailingZeros64 zero-mask safety") {
     CHECK(razobill::core::simd::countTrailingZeros64(0) == 64);
     CHECK(razobill::core::simd::countTrailingZeros64(1) == 0);
     CHECK(razobill::core::simd::countTrailingZeros64(0x8000000000000000ULL) == 63);
 }
 
+// -- randomized property tests and differential verification ------------------
+
+// pins bijection join(split(x)) == x across 300,000 randomized byte runs
 TEST_CASE("property: parse then reconstruct is the identity (random structured messages)") {
     std::mt19937_64 rng(0xC0FFEE);
     const std::string alphabet = "abcXYZ0123456789 \t=,;:()[]{}\"'<>|/._-+\xC3\xA9\xE6\x97\xA5\x0B\x1F\x7F\x80\xFF";
@@ -200,6 +218,7 @@ TEST_CASE("property: parse then reconstruct is the identity (random structured m
     }
 }
 
+// pins semantic bijection join(split(x)) == x across 300,000 random runs
 TEST_CASE("property: parse then reconstruct is the identity (random structured messages, semantic mode)") {
     std::mt19937_64 rng(0xBEEFCAFE);
     const std::string alphabet = "abcXYZ0123456789 \t=,;:()[]{}\"'<>|/._-+\xC3\xA9\xE6\x97\xA5\x0B\x1F\x7F\x80\xFF";
@@ -217,6 +236,7 @@ TEST_CASE("property: parse then reconstruct is the identity (random structured m
     }
 }
 
+// pins template form invariance when slot variable values vary
 TEST_CASE("property: forms are insensitive to slot values") {
     SlotRecord a, b;
     REQUIRE(parse("Receiving block blk_1 src: /10.0.0.1:1 dest: /10.0.0.2:2", a) == Status::Ok);
@@ -226,6 +246,7 @@ TEST_CASE("property: forms are insensitive to slot values") {
     CHECK(fa == fb);
 }
 
+// pins semantic version metadata and ABI version constancy
 TEST_CASE("semantic versioning and ABI contract") {
     auto v = razobill::version();
     CHECK(v.major == 1);
@@ -237,6 +258,7 @@ TEST_CASE("semantic versioning and ABI contract") {
     CHECK(razobill::versionString() == "1.1.2");
 }
 
+// pins SIMD delimiter scanning on >64 byte inputs across instruction sets
 TEST_CASE("hardware vector SIMD scanner and dynamic CPUID dispatcher") {
     using namespace razobill::core::simd;
     SimdArchitecture arch = detectSimdArchitecture();
@@ -259,6 +281,7 @@ TEST_CASE("hardware vector SIMD scanner and dynamic CPUID dispatcher") {
     CHECK(findWhitespace(test128.data(), test128.size()) == 35);
 }
 
+// pins differential identity between scalar and SIMD delimiter scanners
 TEST_CASE("differential scalar vs SIMD delimiter scanner verification") {
     using namespace razobill::core::simd;
     auto scalarFind = [](const char* data, std::size_t len) -> std::size_t {
@@ -277,7 +300,7 @@ TEST_CASE("differential scalar vs SIMD delimiter scanner verification") {
         CHECK(findWhitespaceDynamic(s.data(), s.size()) == scalarFind(s.data(), s.size()));
         CHECK(findWhitespace(s.data(), s.size()) == scalarFind(s.data(), s.size()));
 
-        // Probe single delimiter across every byte offset (tests vector chunk edges: 15, 16, 31, 32, 63, 64)
+        // probe delimiter across every byte offset (tests vector chunk edges)
         for (std::size_t pos = 0; pos < len; ++pos) {
             char orig = s[pos];
             for (char d : delims) {
@@ -304,8 +327,9 @@ TEST_CASE("differential scalar vs SIMD delimiter scanner verification") {
     }
 }
 
+// pins parser recovery and lossless round-trip on unclosed or malformed quotes
 TEST_CASE("unclosed quotes with escaped and unescaped characters roundtrip") {
-    // Regression test for fuzzer timeout on unclosed quotes with trailing characters
+    // regression test for fuzzer timeout on unclosed quotes with trailing chars
     const std::string pathological = "\xca'\xff\xff\\'";
     CHECK(roundtrip(pathological, nullptr, ScanMode::Semantic) == pathological);
     CHECK(roundtrip("unclosed 'quote with trailing", nullptr, ScanMode::Semantic) == "unclosed 'quote with trailing");
@@ -313,6 +337,7 @@ TEST_CASE("unclosed quotes with escaped and unescaped characters roundtrip") {
           "unclosed \"double quote with trailing");
 }
 
+// pins exact round-trip for escaped quotes and trailing backslashes
 TEST_CASE("quote-backslash edge cases and trailing backslashes") {
     const std::vector<std::string> cases = {
         "\"\\\"",
@@ -333,6 +358,9 @@ TEST_CASE("quote-backslash edge cases and trailing backslashes") {
     }
 }
 
+// -- concurrency and dialect execution ----------------------------------------
+
+// pins thread settlement and task cancellation on exception in parallelFor
 TEST_CASE("ThreadPool: parallelFor exception safety and worker settlement") {
     razobill::core::ThreadPool pool(4);
     std::atomic<int> completedTasks{0};
@@ -346,13 +374,14 @@ TEST_CASE("ThreadPool: parallelFor exception safety and worker settlement") {
                                      }),
                     std::runtime_error);
 
-    // After exception is caught, all worker tasks have settled cleanly and pool remains usable
+    // after exception is caught, worker tasks settle and pool remains usable
     std::atomic<int> nextTasks{0};
     pool.parallelFor(50, 10,
                      [&](std::size_t start, std::size_t end) { nextTasks.fetch_add(static_cast<int>(end - start)); });
     CHECK(nextTasks.load() == 50);
 }
 
+// pins SQL string quoting, NUL byte escaping, and template expressions
 TEST_CASE("Dialect: quoting and SQL expression generation (DuckDB & ClickHouse)") {
     auto duck = makeDialect(Flavor::DuckDB);
     auto ch = makeDialect(Flavor::ClickHouse);

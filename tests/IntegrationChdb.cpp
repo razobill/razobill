@@ -1,15 +1,9 @@
-// ==============================================================================
-// Razobill ClickHouse chDB Integration & Cross-Engine Hash Parity Suite
-// ==============================================================================
+// =============================================================================
+// ClickHouse chDB integration and cross-engine hash parity test suite
 //
-// INTEGRATION HARNESS & SCOPE:
-// Validates additive mode execution and schema integration against embedded ClickHouse (chDB):
-// 1. Cross-Engine Hash Parity: Verifies that ClickHouse's built-in `xxHash64()` SQL function
-//    computes identical 64-bit integer hashes to `librazobill/Hash.hpp` across 134,815 events.
-// 2. Additive Layout Indexing: Generates and populates `form_id` indices on raw MergeTree tables.
-// 3. Dynamic Discovery: Gracefully detects whether the chDB dynamic library is available on
-//    the host environment, skipping execution when running on environments without the native driver.
-// ==============================================================================
+// validates additive mode layout indexing and verifies that ClickHouse's
+// native xxHash64() SQL function produces identical hashes to librazobill
+// =============================================================================
 
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <cmath>
@@ -40,11 +34,12 @@ void loadRaw(Backend& b) {
 }
 } // namespace
 
+// pins xxHash64 parity and form keys between ClickHouse and C++ core
+// ~ if ClickHouse xxHash64 diverged here, distributed joins would fail silently
 TEST_CASE("chDB: additive mode, forms computed by ClickHouse SQL equal the C++ core's forms and hashes") {
-    // THE HASH PARITY CONTRACT:
-    // Here we assert that ClickHouse's internal `xxHash64()` function produces bit-for-bit
-    // identical 64-bit integers to our C++ `core::xxh64()` implementation across 134,815 rows.
-    // If even 1 single hash diverges, downstream distributed JOINs across ClickHouse clusters will break.
+    // hash parity contract:
+    // asserts ClickHouse xxHash64() produces identical 64-bit integers to C++
+    // core::xxh64() implementation across 134,815 rows
     if (!chdbAvailable()) {
         MESSAGE("Skipping chDB test: driver library not present");
         return;

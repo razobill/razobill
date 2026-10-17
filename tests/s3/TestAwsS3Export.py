@@ -1,22 +1,20 @@
 #!/usr/bin/env python3
-"""
-TestAwsS3Export.py - End-to-End Validation of Razobill AWS S3 Parquet Export
-=============================================================================
+# =============================================================================
+# end-to-end validation of Razobill AWS S3 Parquet export and query
+#
+# streams decomposed log columns directly to S3 Parquet, executes in-S3 filter
+# predicates, and verifies byte-for-byte exact reconstruction over S3 Parquet
+# ~ بنصدر لـ s3 ونقرأ تاني ونتأكد إن مافيش ولا بايت طار في السكة
+# =============================================================================
 
-Validates:
-1. Unified S3 endpoint communication with DuckDB httpfs (AWS S3, LocalStack, MinIO, or MockS3Server).
-2. Direct SQL export: COPY (SELECT rbForm(msg), rbInts(msg), rbStrs(msg)) TO 's3://...' (FORMAT PARQUET).
-3. In-S3 predicate filtering and aggregation over compressed columnar integer slots.
-4. Byte-for-byte exact lossless reconstruction directly from S3 Parquet files via rbReconstruct.
-"""
-
-import sys
-import re
 import argparse
-import duckdb
 from pathlib import Path
+import re
+import sys
 
-# Setup paths
+import duckdb
+
+# setup paths
 S3_TESTS_DIR = Path(__file__).resolve().parent
 TESTS_DIR = S3_TESTS_DIR.parent
 ROOT_DIR = TESTS_DIR.parent
@@ -26,7 +24,7 @@ sys.path.insert(0, str(TESTS_DIR))
 sys.path.insert(0, str(ROOT_DIR / "lib" / "python"))
 sys.path.insert(0, str(ROOT_DIR))
 
-from S3ClientConfig import configureDuckDbS3
+from S3ClientConfig import configureDuckDbS3  # noqa: E402
 
 try:
     import pyrazobill
@@ -35,15 +33,18 @@ try:
 except ImportError:
     HAS_PYRAZOBILL = False
 
-# Razobill Canonical ASCII Control Characters
+# Razobill canonical ASCII control characters
 kPlaceholder = "\x12"
 kTypeSeparator = "\x13"
 
 
+# decomposes msg into (form, ints, strs) using pyrazobill or reference fallback
 def parseRazobill(msg: str):
-    """
-    Decomposes msg into (form, ints, strs) using the C++ core (pyrazobill)
-    when available, or the pure-Python reference implementation as fallback.
+    """Decompose log message into form key, integers, and string tokens.
+
+    inv: join(split(msg)) == msg
+    in:  input log message string
+    out: tuple (form_key, ints_list, strs_list)
     """
     if HAS_PYRAZOBILL:
         rec = pyrazobill.RzSplit(msg)
@@ -103,10 +104,13 @@ def parseRazobill(msg: str):
     return form, ints_list, strs_list
 
 
+# losslessly reconstructs exact original message from form, ints, and strs
 def reconstructRazobill(form: str, ints: list, strs: list) -> str:
-    """
-    Losslessly reconstructs the exact original message from (form, ints, strs)
-    using the C++ core (pyrazobill) when available, or pure Python fallback.
+    """Reconstruct exact original log message from form key and slot arrays.
+
+    inv: reconstruct(form, ints, strs) == original
+    in:  form template string, list of integer values, list of string values
+    out: byte-exact reconstructed message string
     """
     if HAS_PYRAZOBILL:
         return pyrazobill.RzJoin(form, ints, strs)
@@ -142,7 +146,14 @@ def reconstructRazobill(form: str, ints: list, strs: list) -> str:
     return "".join(out)
 
 
+# pins exact round-trip reconstruction directly from S3 Parquet files
 def testAwsS3Export(endpoint: str = None, bucket: str = "telemetry", count: int = 2000):
+    """Verify end-to-end DuckDB export to AWS S3 Parquet and lossless reconstruction.
+
+    inv: all exported rows reconstruct byte-for-byte identically from S3 Parquet
+    in:  optional S3 endpoint URL, target bucket name, event count
+    out: True on complete verification; raises AssertionError on mismatch
+    """
     print("=" * 78)
     print("  RAZOBILL AWS S3 PARQUET EXPORT & ROUNDTRIP VERIFICATION")
     print("=" * 78)

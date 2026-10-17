@@ -1,5 +1,10 @@
-// Unit tests for low-level memory planes: MemoryArena, StringPool, FormCatalog, and ThreadPool.
-// Verifies 64-byte alignment, monotonic pointer progression, and cache-conscious behavior.
+// =============================================================================
+// unit test suite for memory management planes and concurrency primitives
+//
+// verifies MemoryArena alignment, StringPool interning and GC, FormCatalog
+// collision resilience, and ThreadPool chunked parallel work distribution
+// =============================================================================
+
 #include <atomic>
 #include <ostream>
 #include <string>
@@ -14,9 +19,10 @@
 
 using namespace razobill::core;
 
+// pins 64-byte alignment and monotonic pointer progression without heap realloc
 TEST_CASE("MemoryArena monotonic allocation and cache-line alignment") {
-    // Assert strictly that all returned pointers are multiples of 64 bytes.
-    // If this fails, AVX2 vector loads will suffer cache-line crossing penalties!
+    // assert strictly that all returned pointers are multiples of 64 bytes
+    // prevents AVX2 vector loads from suffering cache-line split penalties
     MemoryArena arena(4096);
     void* p1 = arena.allocate(100, 64);
     REQUIRE(p1 != nullptr);
@@ -33,17 +39,18 @@ TEST_CASE("MemoryArena monotonic allocation and cache-line alignment") {
     CHECK((reinterpret_cast<std::size_t>(p3) % 64) == 0);
 }
 
+// pins multi-block chunk growth and buffer retention across resets
 TEST_CASE("MemoryArena multi-block chunk expansion and reset reuse") {
-    // Initial arena with 1024-byte default block size
+    // initial arena with 1024-byte default block size
     MemoryArena arena(1024);
     CHECK(arena.allocatedBytes() == 0);
 
-    // First allocation lazily creates block 0 with capacity >= 1024
+    // first allocation lazily creates block 0 with capacity >= 1024
     void* p1 = arena.allocate(800, 64);
     REQUIRE(p1 != nullptr);
     CHECK(arena.capacity() >= 1024);
 
-    // Second allocation exceeds block 0 and forces block 1 creation
+    // second allocation exceeds block 0 and forces block 1 creation
     void* p2 = arena.allocate(800, 64);
     REQUIRE(p2 != nullptr);
     CHECK(p2 != p1);
@@ -51,12 +58,12 @@ TEST_CASE("MemoryArena multi-block chunk expansion and reset reuse") {
     CHECK(capAfterGrowth >= 2048);
     CHECK(arena.allocatedBytes() >= 1600);
 
-    // Reset rewinds to block 0 without freeing allocated block buffers
+    // reset rewinds to block 0 without freeing allocated block buffers
     arena.reset();
     CHECK(arena.allocatedBytes() == 0);
     CHECK(arena.capacity() == capAfterGrowth);
 
-    // Reallocate through block 0 and block 1 to certify reuse
+    // reallocate through block 0 and block 1 to certify reuse
     void* p3 = arena.allocate(800, 64);
     REQUIRE(p3 != nullptr);
     void* p4 = arena.allocate(800, 64);
@@ -64,6 +71,7 @@ TEST_CASE("MemoryArena multi-block chunk expansion and reset reuse") {
     CHECK(arena.capacity() == capAfterGrowth);
 }
 
+// pins deduplicating string interning, ID stability, and generational GC
 TEST_CASE("StringPool interning and garbage collection") {
     StringPool pool;
     auto id0 = pool.intern("apple");
@@ -77,7 +85,7 @@ TEST_CASE("StringPool interning and garbage collection") {
     CHECK(pool.lookup(id0) == "apple");
     CHECK(pool.lookup(id1) == "banana");
 
-    // Retain only "banana" and "cherry"
+    // retain only "banana" and "cherry"
     std::unordered_set<std::uint32_t> active{id1, id2};
     auto stats = pool.gc(active);
     CHECK(stats.totalBefore == 3);
@@ -86,6 +94,7 @@ TEST_CASE("StringPool interning and garbage collection") {
     CHECK(pool.size() == 2);
 }
 
+// pins reader-writer thread safety during concurrent interning and lookups
 TEST_CASE("StringPool concurrent lookup safety and withString accessor") {
     StringPool pool;
     auto id0 = pool.intern("thread_safe_token");
@@ -101,12 +110,12 @@ TEST_CASE("StringPool concurrent lookup safety and withString accessor") {
     CHECK(pool.withString(id0, [&](std::string_view v) { inspected = (v == "thread_safe_token"); }));
     CHECK(inspected);
 
-    // Invalid ID bounds check
+    // invalid ID bounds check
     CHECK(pool.lookup(9999).empty());
     CHECK_FALSE(pool.lookup(9999, outBuf));
     CHECK_FALSE(pool.withString(9999, [](std::string_view) {}));
 
-    // Concurrent growth and lookup stress test
+    // concurrent growth and lookup stress test
     std::atomic<bool> stop{false};
     std::atomic<bool> readerMatches{true};
     std::thread reader([&]() {
@@ -127,6 +136,7 @@ TEST_CASE("StringPool concurrent lookup safety and withString accessor") {
     CHECK(readerMatches.load());
 }
 
+// pins template form key registration and atomic ID generation
 TEST_CASE("FormCatalog thread-safe registration") {
     FormCatalog catalog;
     auto h1 = catalog.registerForm("test_key_1\x13I", "test_key_1 <*>", 1, 0);
@@ -138,15 +148,16 @@ TEST_CASE("FormCatalog thread-safe registration") {
     CHECK(catalog.size() == 2);
 }
 
+// pins full-key equality check preventing hash collision aliasing
 TEST_CASE("FormCatalog full-key comparison and hash collision safety") {
     FormCatalog catalog;
-    // Two distinct keys simulating a 64-bit hash collision
+    // two distinct keys simulating a 64-bit hash collision
     const std::uint64_t simulatedHash = 0xABCD1234EFEF9988ULL;
     catalog.registerFormWithHash("login_failed_user\x13S", "login failed for <*>", 0, 1, simulatedHash);
     catalog.registerFormWithHash("query_timeout_ms\x13I", "query timeout after <*> ms", 1, 0, simulatedHash);
 
-    // In a hash-only keyed map, the second form would be dropped/aliased and size would be 1.
-    // Under full-key comparison, both distinct forms must be safely preserved.
+    // in a hash-only keyed map, the second form would be dropped or aliased
+    // under full-key comparison, both distinct forms must be preserved
     CHECK(catalog.size() == 2);
     CHECK(catalog.collisionCount() == 1);
     CHECK(catalog.contains("login_failed_user\x13S"));
@@ -164,14 +175,14 @@ TEST_CASE("FormCatalog full-key comparison and hash collision safety") {
     CHECK(e2.templateStr == "query timeout after <*> ms");
     CHECK(e2.intSlots == 1);
 
-    // Verify dense unique ID lookup
+    // verify dense unique ID lookup
     FormEntry byId1{}, byId2{};
     REQUIRE(catalog.findFormById(1, byId1));
     CHECK(byId1.key == "login_failed_user\x13S");
     REQUIRE(catalog.findFormById(2, byId2));
     CHECK(byId2.key == "query_timeout_ms\x13I");
 
-    // Verify collision queries
+    // verify collision queries
     CHECK(catalog.isCollisionHash(simulatedHash));
     std::vector<std::string> collidingKeys;
     REQUIRE(catalog.findKeysByHash(simulatedHash, collidingKeys));
@@ -180,6 +191,7 @@ TEST_CASE("FormCatalog full-key comparison and hash collision safety") {
     CHECK(collidingKeys[1] == "query_timeout_ms\x13I");
 }
 
+// pins uniform work distribution across thread pool workers with chunk size
 TEST_CASE("ThreadPool chunked parallelFor") {
     ThreadPool pool(4);
     constexpr std::size_t N = 10000;
@@ -196,12 +208,13 @@ TEST_CASE("ThreadPool chunked parallelFor") {
     }
 }
 
+// pins zero chunkSize fallback avoiding division by zero
 TEST_CASE("ThreadPool parallelFor handles zero chunkSize safely") {
     ThreadPool pool(4);
     constexpr std::size_t N = 1000;
     std::vector<int> data(N, 0);
 
-    // If unhandled, chunkSize == 0 causes hardware division-by-zero (SIGFPE)
+    // if unhandled, chunkSize == 0 causes hardware division-by-zero (SIGFPE)
     pool.parallelFor(N, 0, [&](std::size_t start, std::size_t end) {
         for (std::size_t i = start; i < end; ++i) {
             data[i] = 1;

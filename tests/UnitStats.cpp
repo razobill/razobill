@@ -1,3 +1,10 @@
+// =============================================================================
+// unit test suite for information-theoretic semantic accounting
+//
+// verifies xxHash64 test vectors, entropy, semantic ledger identities, merge
+// cost closed form, consequence decomposition, and Frechet polytope bounds
+// =============================================================================
+
 #include <algorithm>
 #include <cmath>
 #include <random>
@@ -10,6 +17,7 @@
 using namespace razobill;
 using namespace razobill::stats;
 
+// pins xxHash64 test vectors ("" -> 0xEF46DB3751D8E999ULL) and collision checks
 TEST_CASE("xxh64 matches the reference test vectors") {
     CHECK(core::xxh64("") == 0xEF46DB3751D8E999ULL);
     CHECK(core::xxh64("a") == 0xD24EC4F1A98C6E5BULL);
@@ -22,6 +30,7 @@ TEST_CASE("xxh64 matches the reference test vectors") {
     }
 }
 
+// pins Shannon entropy calculation on uniform, degenerate, and empty counts
 TEST_CASE("entropy basics") {
     const double u[] = {1, 1, 1, 1};
     CHECK(entropyOfCounts(u) == doctest::Approx(2.0));
@@ -30,12 +39,13 @@ TEST_CASE("entropy basics") {
     CHECK(entropyOfCounts({}) == 0.0);
 }
 
+// pins canonical polysemy/synonymy toy lexicon values from Atta (2026)
 TEST_CASE("the paper's Figure 1 lexicon") {
-    // Exact verification of the canonical polysemy / synonymy toy example from
-    // "Latitude and Doubt: An exact ledger of meaning in messages" (M. M. Atta, 2026).
-    // Meanings: river edge(0), aircraft tilt(1), financial institution(2)
-    // Forms:    shore(0), bank(1), lender(2)
-    // Polysemous word 'bank' creates Doubt (Delta > 0), while synonyms create Latitude (Lambda > 0).
+    // exact verification of the canonical polysemy / synonymy toy example from
+    // "Latitude and Doubt: An exact ledger of meaning in messages" (Atta, 2026)
+    // meanings: river edge(0), aircraft tilt(1), financial institution(2)
+    // forms:    shore(0), bank(1), lender(2)
+    // polysemous word 'bank' creates doubt; synonyms create latitude
     const std::vector<Cell> cells{{0, 0, 0.25}, {1, 0, 0.25}, {1, 1, 0.125}, {1, 2, 0.25}, {2, 2, 0.125}};
     const auto l = ledger(cells, 1.0);
     CHECK(l.content == doctest::Approx(1.406).epsilon(1e-3));
@@ -46,9 +56,10 @@ TEST_CASE("the paper's Figure 1 lexicon") {
     CHECK(l.coverage == doctest::Approx(1.0));
 }
 
+// pins Theorem 1 identities |E - (I + L)| < 1e-11 across 20,000 random laws
 TEST_CASE("ledger identities hold on random joint laws") {
-    // Monte Carlo verification of Theorem 1 identities across 20,000 randomized joint laws:
-    // Asserting |E - (I + Lambda)| < 1e-11 and |C - (I + Delta)| < 1e-11 unconditionally.
+    // Monte Carlo check of Theorem 1 identities across 20,000 random laws
+    // asserting |E - (I + Lambda)| < 1e-11 and |C - (I + Delta)| < 1e-11
     std::mt19937_64 rng(42);
     std::exponential_distribution<double> e(1.0);
     double worst = 0;
@@ -78,6 +89,7 @@ TEST_CASE("ledger identities hold on random joint laws") {
     CHECK(worst < 1e-12);
 }
 
+// pins JSD merge cost equivalence to mutual info drop across 2,000 trials
 TEST_CASE("merge cost equals I(X;Y) - I(W;Y) (closed form of the gate)") {
     std::mt19937_64 rng(7);
     for (int it = 0; it < 2000; ++it) {
@@ -104,6 +116,7 @@ TEST_CASE("merge cost equals I(X;Y) - I(W;Y) (closed form of the gate)") {
     }
 }
 
+// pins zero cost for identical distributions and 1 bit for disjoint pairs
 TEST_CASE("merge cost: identical distributions cost nothing, disjoint ones cost one bit per equal-volume pair") {
     const std::vector<XY> same{{0, 0, 10}, {0, 1, 30}, {1, 0, 5}, {1, 1, 15}};
     CHECK(mergeCost(same, {{0, true}, {1, true}}, 60).jsd == doctest::Approx(0.0).epsilon(1e-12));
@@ -112,6 +125,7 @@ TEST_CASE("merge cost: identical distributions cost nothing, disjoint ones cost 
     CHECK(mergeCost(disjoint, {{0, true}}, 20).jsd == 0.0);
 }
 
+// pins zero leakage under purpose-preserving maps and positive otherwise
 TEST_CASE("leakage is zero for a map that preserves the purpose, positive otherwise") {
     const std::vector<XY> xy{{0, 0, 10}, {1, 0, 12}, {2, 1, 9}, {3, 1, 11}};
     const std::vector<FormMeaning> good{{0, 0, 1}, {1, 0, 1}, {2, 1, 1}, {3, 1, 1}};
@@ -120,6 +134,7 @@ TEST_CASE("leakage is zero for a map that preserves the purpose, positive otherw
     CHECK(leakage(xy, bad) == doctest::Approx(mutualInformation(xy)).epsilon(1e-9));
 }
 
+// pins Miller-Madow bias correction and Proposition 10 confidence intervals
 TEST_CASE("estimation: Miller-Madow correction and certified interval") {
     // Miller-Madow correction adds (K - 1) / (2n ln 2) bits
     const double pluginH = 1.5;
@@ -134,9 +149,10 @@ TEST_CASE("estimation: Miller-Madow correction and certified interval") {
     CHECK(ci.halfWidth < std::log2(25.0));
 }
 
+// pins Theorem 4c four-term entropy decomposition
 TEST_CASE("consequence decomposition: Theorem 4c E = I(X;Y) + H(M|Y) + H(X|M)") {
     // Purpose Y in {0, 1}, Meanings M in {0, 1}, Forms X in {0, 1, 2, 3}
-    // Forms 0, 1 convey M = 0; Forms 2, 3 convey M = 1 (latitude > 0)
+    // forms 0, 1 convey M = 0; forms 2, 3 convey M = 1 (latitude > 0)
     const std::vector<XY> xy{{0, 0, 40.0}, {1, 0, 60.0}, {2, 1, 30.0}, {3, 1, 70.0}};
     const std::vector<FormMeaning> map{{0, 0, 1.0}, {1, 0, 1.0}, {2, 1, 1.0}, {3, 1, 1.0}};
 
@@ -144,38 +160,40 @@ TEST_CASE("consequence decomposition: Theorem 4c E = I(X;Y) + H(M|Y) + H(X|M)") 
     CHECK(decomp.satisfiesIdentity(1e-9));
     CHECK(decomp.expression > 0.0);
     CHECK(decomp.consequence > 0.0);
-    CHECK(decomp.latitude > 0.0); // Synonyms {0, 1} and {2, 3} give positive latitude H(X|M)
+    CHECK(decomp.latitude > 0.0); // synonyms {0, 1} and {2, 3} give positive latitude
     CHECK(decomp.hedge >= 0.0);
 }
 
+// pins metric distance d(W,X) = Lambda + Delta and vocabulary law lower bound
 TEST_CASE("Proposition 3 metric distance and Corollary 2 vocabulary law") {
-    // Exact verification using Figure 1 lexicon (3 forms: shore, bank, lender)
+    // exact verification using Figure 1 lexicon (3 forms: shore, bank, lender)
     const std::vector<Cell> cells{{0, 0, 0.25}, {1, 0, 0.25}, {1, 1, 0.125}, {1, 2, 0.25}, {2, 2, 0.125}};
     const auto l = ledger(cells, 1000.0);
 
-    // Ledger identities:
+    // ledger identities:
     CHECK(l.satisfiesLedgerIdentities(1e-6));
 
     // Proposition 3 metric distance d(W, X) = Lambda + Delta
     CHECK(l.distance == doctest::Approx(l.latitude + l.doubt).epsilon(1e-12));
     CHECK(l.distance >= 0.0);
 
-    // Corollary 2 vocabulary law: Delta - Lambda >= C - log2(N) where N = 3 distinct forms
+    // Corollary 2 vocabulary law: Delta - Lambda >= C - log2(N) for N = 3 forms
     CHECK(l.satisfiesVocabularyLaw(3, 1e-5));
     CHECK(l.effectiveVocabulary == doctest::Approx(std::pow(2.0, l.expression)).epsilon(1e-6));
     CHECK(l.effectiveContent == doctest::Approx(std::pow(2.0, l.content)).epsilon(1e-6));
     CHECK(l.effectiveLatitude == doctest::Approx(std::pow(2.0, l.latitude)).epsilon(1e-6));
     CHECK(l.effectiveDoubt == doctest::Approx(std::pow(2.0, l.doubt)).epsilon(1e-6));
 
-    // Stratified Miller-Madow estimators must be >= plugin estimators on positive finite counts
+    // stratified Miller-Madow estimators >= plugin estimators on finite counts
     CHECK(l.contentMm >= l.content);
     CHECK(l.expressionMm >= l.expression);
     CHECK(l.latitudeMm >= l.latitude);
     CHECK(l.doubtMm >= l.doubt);
 }
 
+// pins Theorem 7 asymptotic price of saying identity and 2-bit coding bounds
 TEST_CASE("Theorem 7: The price of saying n(E + Delta) = nC + nLambda") {
-    // Canonical Figure 1 lexicon from Atta (2026)
+    // canonical Figure 1 lexicon from Atta (2026)
     const std::vector<Cell> cells{{0, 0, 0.25}, {1, 0, 0.25}, {1, 1, 0.125}, {1, 2, 0.25}, {2, 2, 0.125}};
     const auto l = ledger(cells, 1.0);
     REQUIRE(l.satisfiesLedgerIdentities(1e-9));
@@ -194,12 +212,13 @@ TEST_CASE("Theorem 7: The price of saying n(E + Delta) = nC + nLambda") {
     }
 }
 
+// pins Proposition 6 telescoping entropy and relevance across hierarchy
 TEST_CASE("Proposition 6: Multi-level depth ledger splits entropy and relevance across levels") {
-    // Hierarchical test setup:
+    // hierarchical test setup:
     // W_0 = Form X in {0, 1, 2, 3}
-    // W_1 = Synset / Lemma in {0, 1} (Forms 0,1 -> W_1=0; Forms 2,3 -> W_1=1)
+    // W_1 = Synset / Lemma in {0, 1} (forms 0,1 -> W_1=0; forms 2,3 -> W_1=1)
     // W_2 = Coarse Domain in {0} (W_1=0,1 -> W_2=0)
-    // Purpose Y in {0, 1}
+    // purpose Y in {0, 1}
     std::vector<HierarchicalStep> steps{
         {0, {0, 0}, 0, 40.0}, {1, {0, 0}, 0, 60.0}, {2, {1, 0}, 1, 30.0}, {3, {1, 0}, 1, 70.0}};
 
@@ -218,8 +237,9 @@ TEST_CASE("Proposition 6: Multi-level depth ledger splits entropy and relevance 
           doctest::Approx(dl.totalRelevance).epsilon(1e-9));
 }
 
+// pins independent/functional extrema and unaggregated cell summation
 TEST_CASE("Theorem 1 Fréchet polytope bounding and Cell deduplication") {
-    // 1. Exact independent variable test: X independent of W
+    // 1. exact independent variable test: X independent of W
     std::vector<Cell> indepCells{{0, 0, 25.0}, {0, 1, 25.0}, {1, 0, 25.0}, {1, 1, 25.0}};
     const auto lIndep = ledger(indepCells, 100.0);
     CHECK(lIndep.conveyance == doctest::Approx(0.0).epsilon(1e-12));
@@ -227,7 +247,7 @@ TEST_CASE("Theorem 1 Fréchet polytope bounding and Cell deduplication") {
     CHECK(std::abs(lIndep.content - (lIndep.conveyance + lIndep.doubt)) < 1e-15);
     CHECK(std::abs((lIndep.expression - lIndep.content) - (lIndep.latitude - lIndep.doubt)) < 1e-15);
 
-    // 2. Exact deterministic functional test: X == W
+    // 2. exact deterministic functional test: X == W
     std::vector<Cell> detCells{{0, 0, 40.0}, {1, 1, 60.0}};
     const auto lDet = ledger(detCells, 100.0);
     CHECK(lDet.latitude == doctest::Approx(0.0).epsilon(1e-12));
@@ -237,7 +257,7 @@ TEST_CASE("Theorem 1 Fréchet polytope bounding and Cell deduplication") {
     CHECK(std::abs(lDet.expression - (lDet.conveyance + lDet.latitude)) < 1e-15);
     CHECK(std::abs(lDet.content - (lDet.conveyance + lDet.doubt)) < 1e-15);
 
-    // 3. Cell deduplication: unaggregated identical (form, meaning) rows
+    // 3. cell deduplication: unaggregated identical (form, meaning) rows
     std::vector<Cell> unaggCells{
         {0, 0, 10.0}, {0, 0, 10.0}, // combined: {0, 0, 20.0}
         {1, 0, 15.0}, {1, 0, 15.0}, // combined: {1, 0, 30.0}

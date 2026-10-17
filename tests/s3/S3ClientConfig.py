@@ -1,23 +1,20 @@
 #!/usr/bin/env python3
-"""
-S3ClientConfig.py - Production AWS & Local S3 Configuration for DuckDB
-========================================================================
+# =============================================================================
+# AWS and local S3 endpoint configuration helper for DuckDB httpfs
+#
+# provides unified S3 connectivity across live AWS, LocalStack, MinIO, and
+# zero-dependency MockS3Server loopback fallback for automated test runs
+# ~ نلف وندور ونرجع للـ mock السريع عشان ماحدش يدفع فواتير aws في الاختبارات
+# =============================================================================
 
-Provides unified, robust S3 connectivity for DuckDB across:
-1. Real AWS S3 (EC2, ECS, EKS, Lambda, AWS CLI credentials, IAM STS tokens).
-2. LocalStack AWS Emulator (Docker port 4566 or AWS_ENDPOINT_URL).
-3. MinIO Object Storage (port 9000 or custom endpoint).
-4. Zero-Dependency MockS3Server (automated fallback for offline testing).
-"""
-
-import sys
 import os
-import socket
-import urllib.request
 from pathlib import Path
-from typing import Optional, Tuple, Any
+import socket
+import sys
+from typing import Any, Optional, Tuple
+import urllib.request
 
-# Ensure tests/s3 is on path to find MockS3Server
+# ensure tests/s3 is on path to find MockS3Server
 CURRENT_DIR = Path(__file__).resolve().parent
 if str(CURRENT_DIR) not in sys.path:
     sys.path.insert(0, str(CURRENT_DIR))
@@ -28,7 +25,13 @@ except ImportError:
     MockS3Server = None
 
 
+# checks if TCP socket can connect to host:port within 0.5s timeout
 def isPortOpen(host: str, port: int) -> bool:
+    """Test TCP connectivity to specified host and port.
+
+    in:  host address and integer port
+    out: True if port accepted connection, False otherwise
+    """
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(0.5)
@@ -39,15 +42,21 @@ def isPortOpen(host: str, port: int) -> bool:
         return False
 
 
+# detects live AWS execution environments vs local emulators
 def isRealAwsEnvironment() -> bool:
-    """
-    Detects whether the environment is running against live AWS S3.
+    """Detect whether environment is running against live AWS S3.
+
+    out: True if real AWS credentials or runtime metadata detected
     """
     endpoint = os.environ.get("AWS_ENDPOINT_URL", "").lower()
-    if endpoint and ("localhost" in endpoint or "127.0.0.1" in endpoint or "localstack" in endpoint):
+    if endpoint and (
+        "localhost" in endpoint
+        or "127.0.0.1" in endpoint
+        or "localstack" in endpoint
+    ):
         return False
 
-    # Check for AWS compute runtime indicators
+    # check for AWS compute runtime indicators
     if any(
         k in os.environ
         for k in (
@@ -58,24 +67,31 @@ def isRealAwsEnvironment() -> bool:
     ):
         return True
 
-    # Check if real AWS credentials exist without local emulator override
+    # check if real AWS credentials exist without local emulator override
     access_key = os.environ.get("AWS_ACCESS_KEY_ID", "")
-    if access_key and access_key not in ("test", "mock", "minioadmin") and not endpoint:
+    if (
+        access_key
+        and access_key not in ("test", "mock", "minioadmin")
+        and not endpoint
+    ):
         return True
 
     return False
 
 
+# configures DuckDB httpfs extension across live AWS, LocalStack, MinIO, or mock
 def configureDuckDbS3(
     con: Any,
     bucket: str = "telemetry",
     endpointOverride: Optional[str] = None,
     regionOverride: Optional[str] = None,
 ) -> Tuple[str, str, bool, Optional[Any]]:
-    """
-    Configures DuckDB's httpfs extension for S3 access.
-    Returns:
-        (bucket_name, endpoint_description, is_real_aws, mock_server_instance)
+    """Configure DuckDB httpfs extension for S3 parquet export and query.
+
+    in:  active DuckDB connection, target bucket, and optional endpoint/region
+    out: tuple (bucket, endpoint_description, is_real_aws, mock_server)
+    own: returns MockS3Server instance if spawned; caller owns server lifecycle
+    err: raises RuntimeError if no endpoint is reachable and mock is unavailable
     """
     # 1. Load httpfs
     con.execute("INSTALL httpfs; LOAD httpfs;")
@@ -135,7 +151,7 @@ def configureDuckDbS3(
             req = urllib.request.Request(f"http://127.0.0.1:4566/{bucket}", method="PUT")
             urllib.request.urlopen(req, timeout=1.0)
         except Exception:
-            # Bucket may already exist or LocalStack emulator returned an error; continue configuration
+            # bucket may already exist or emulator returned error; continue
             pass
         con.execute("SET s3_endpoint = '127.0.0.1:4566';")
         con.execute("SET s3_use_ssl = false;")

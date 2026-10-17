@@ -2,21 +2,29 @@
 # description: test razobill extension
 # group: [razobill]
 
-# Before loading, scalar function should not exist
+# =============================================================================
+# sqllogictest suite for DuckDB loadable C extension integration
+#
+# verifies catalog error prior to load, load statement execution, and
+# vectorized RzSplit / RzJoin round-trip execution directly inside SQL engine
+# =============================================================================
+
+# pins Catalog Error when invoking RzSplit without loading extension
 statement error
 SELECT RzSplit('User 1042 authenticated');
 ----
 Catalog Error
 
-# Load the extension
+# load razobill dynamic extension into duckdb session
 require razobill
 
-# Confirm extension decomposition and reconstruction
+# pins exact round-trip join(split(x)) == x in single SQL statement
 query T
 SELECT RzJoin(d.template, d.ints, d.strs) FROM (SELECT RzSplit('User 1042 authenticated') AS d);
 ----
 User 1042 authenticated
 
+# pins 1-based DuckDB array indexing for extracted integer slot values
 query I
 SELECT (RzSplit('User 1042 authenticated')).ints[1];
 ----

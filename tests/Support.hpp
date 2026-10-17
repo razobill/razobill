@@ -1,10 +1,12 @@
 #pragma once
-// Shared by integration tests: backend factories and test result reporting.
+
+// =============================================================================
+// test harness support: backend factories, path normalizer, and metric reporter
 //
-// INTEGRATION HARNESS:
-// Dynamically discovers and boots embedded DuckDB and ClickHouse chDB runtimes
-// via Arrow Database Connectivity (ADBC).
-// Handles path normalization (Windows '\\' -> '/') so SQL `LOAD` statements work seamlessly.
+// discovers embedded DuckDB and chDB shared libraries via ADBC, normalizes SQL
+// filesystem paths across platforms, and formats structured result metrics
+// =============================================================================
+
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -14,18 +16,23 @@
 
 namespace support {
 
+/// reads environment variable with fallback default
 inline const char* env(const char* k, const char* d) {
     const char* v = std::getenv(k);
     return v ? v : d;
 }
 
-// Forward-slash path normalizer: Windows loves backslashes, but SQL parsers treat them as escape characters!
+/// converts Windows backslashes to forward slashes for SQL string literals
+/// in:  filesystem path string
+/// out: normalized path with all backslashes replaced by forward slashes
 inline std::string normalizePath(std::string p) {
     for (char& c : p)
         if (c == '\\') c = '/';
     return p;
 }
 
+/// configures ADBC options and dynamic library discovery for embedded DuckDB
+/// out: populated AdbcOptions configured with extension load command and memory
 inline razobill::AdbcOptions duckdbOptions() {
     razobill::AdbcOptions o;
     o.flavor = razobill::Flavor::DuckDB;
@@ -85,6 +92,8 @@ inline razobill::AdbcOptions duckdbOptions() {
     return o;
 }
 
+/// configures ADBC options for embedded ClickHouse chDB runtime
+/// out: populated AdbcOptions configured with chDB driver and preloaded Python
 inline razobill::AdbcOptions chdbOptions() {
     razobill::AdbcOptions o;
     o.flavor = razobill::Flavor::ClickHouse;
@@ -95,12 +104,13 @@ inline razobill::AdbcOptions chdbOptions() {
     return o;
 }
 
+/// emits structured machine-readable result metric to stdout
 inline void result(const char* name, double v) {
     std::printf("RESULT %s %.12g\n", name, v);
     std::fflush(stdout);
 }
 
-// Backward compatibility aliases
+// backward compatibility aliases
 inline razobill::AdbcOptions duckdb_options() {
     return duckdbOptions();
 }

@@ -1,18 +1,23 @@
-"""
-MockS3Server.py - Zero-Dependency In-Memory AWS S3 HTTP Server for Local Testing
-Supports DuckDB httpfs extension: single-part PUT, multi-part upload, GET with range requests, HEAD, and DELETE.
-"""
+# =============================================================================
+# in-memory AWS S3 REST API emulator for local integration testing
+#
+# supports DuckDB httpfs client: single-part PUT, multi-part upload, range
+# GET requests, HEAD, and DELETE without external MinIO/S3 daemon dependencies
+# ~ سيرفر s3 غلبان شغال في الرام عشان مانحتاجش minio ولا aws
+# =============================================================================
 
-import re
-import time
-import uuid
 import hashlib
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import re
 import threading
-from urllib.parse import urlparse, parse_qs
-from http.server import HTTPServer, BaseHTTPRequestHandler
+import time
+from urllib.parse import parse_qs, urlparse
+import uuid
 
 
+# thread-safe in-memory storage tracking buckets, keys, and multipart state
 class MockS3Storage:
+    """Thread-safe in-memory object store for mock S3 buckets and multipart state."""
     def __init__(self):
         self.lock = threading.Lock()
         self.buckets = {"telemetry": {}, "test-bucket": {}}

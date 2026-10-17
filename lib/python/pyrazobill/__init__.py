@@ -1,3 +1,9 @@
+# ==============================================================================
+#  file : lib/python/pyrazobill/__init__.py
+#  role : python package entrypoint, dynamic loader, and high-level api
+#  inv  : join(split(x)) == x; bit-identical xxHash64 parity with c++ engine
+# ==============================================================================
+
 """
 Razobill: High-performance log parser and lossless line reconstruction engine.
 ==============================================================================
@@ -26,25 +32,29 @@ import sys
 from pathlib import Path
 from typing import Iterable, List, NamedTuple, Optional, Sequence, Union
 
-# On Windows, add the package directory and system PATH to DLL search path for compiled extensions
+# -- dynamic library resolution on windows -------------------------------------
+
+# on windows, add package directory and system PATH to DLL search path
 _pkg_dir = Path(__file__).resolve().parent
 if sys.platform == "win32":
     try:
         os.add_dll_directory(str(_pkg_dir))
     except (AttributeError, OSError, ValueError):
-        # Ignore unsupported directories or platforms without add_dll_directory
+        # ignore unsupported directories or platforms without add_dll_directory
         pass
     for _p in os.environ.get("PATH", "").split(os.pathsep):
         if _p and os.path.isdir(_p):
             try:
                 os.add_dll_directory(_p)
             except (AttributeError, OSError, ValueError):
-                # Ignore invalid or inaccessible PATH entries
+                # ignore invalid or inaccessible PATH entries
                 pass
+
+# -- exception hierarchy and data records --------------------------------------
 
 
 class RzError(ValueError):
-    """Raised when an operation fails due to malformed input, invalid syntax, or mismatched arguments."""
+    """Raised on malformed input, invalid syntax, or mismatched arguments."""
 
     pass
 
@@ -63,37 +73,54 @@ class RzRecord(NamedTuple):
         return f"<razobill.RzRecord template={t_repr} ints={len(self.ints)} strs={len(self.strs)}>"
 
 
+# -- native extension loader and pure-python fallback --------------------------
+
 try:
     _core = importlib.import_module(".Core", package=__name__)
     _NATIVE = True
 except (ImportError, AttributeError):
+    # ~ لو الكور مش مبني بنقلب بايثون صافي بنفس النتائج
     from . import _fallback as _core
 
     _NATIVE = False
 
 
 def isNative() -> bool:
-    """Return True if the native C++ SIMD engine is loaded."""
+    """return True if native C++ SIMD extension is loaded
+
+    out: True if native C++ extension is loaded, False on fallback
+    thread: thread-safe, immutable module flag
+    """
     return _NATIVE
 
 
+# -- public decomposition and reconstruction api -------------------------------
+
+
 def RzSplit(line: Union[str, bytes], mode: str = "semantic") -> RzRecord:
-    """Split a log line into a template plus its numbers and words.
+    """split a log line into a template plus its numbers and words
+
+    inv: RzJoin(RzSplit(line)) == line
+    in: line is str or bytes; mode is 'semantic' or 'exact'
+    out: RzRecord namedtuple containing template, ints list, strs list
+    own: returns newly allocated Python objects owning their memory
+    thread: thread-safe; releases GIL in native C++ engine during parsing
+    err: raises RzError on unsupported type or invalid scan mode
 
     Parameters
     ----------
     line : str or bytes
-        The log line to split. Empty string or bytes are valid.
+        log line to split; empty string or bytes are valid
     mode : {"semantic", "exact"}, default="semantic"
-        Token scanning behavior. "semantic" groups variable tokens (such as IPs,
-        paths, and usernames) into string placeholders; "exact" isolates numbers.
+        token scanning behavior: "semantic" groups variable tokens (such as IPs,
+        paths, and usernames) into string placeholders; "exact" isolates numbers
 
     Returns
     -------
     RzRecord
-        Named tuple of (template, ints, strs) where template contains typed
-        placeholders ({i} for integers, {s} for strings). Returns matching type
-        (str for str input, bytes for bytes input).
+        named tuple of (template, ints, strs) where template contains typed
+        placeholders ({i} for integers, {s} for strings); returns matching type
+        (str for str input, bytes for bytes input)
 
     Examples
     --------
@@ -121,6 +148,7 @@ def RzSplit(line: Union[str, bytes], mode: str = "semantic") -> RzRecord:
             f"Offending input: '{mode}'."
         )
     try:
+        # delegate to native c++ extension or pure-python fallback
         t, i, s = _core.split(line, mode)
         return RzRecord(t, i, s)
     except RzError:
@@ -134,25 +162,29 @@ def RzJoin(
     ints: Optional[Sequence[int]] = None,
     strs: Optional[Sequence[Union[str, bytes]]] = None,
 ) -> Union[str, bytes]:
-    """Join a template and its numbers and words back to the exact original bytes or string.
+    """join a template and its parameters back to exact original bytes or string
 
-    Guarantees:
-        RzJoin(*RzSplit(line)) == line
-        RzJoin(RzSplit(line)) == line
+    inv: RzJoin(*RzSplit(line)) == line and RzJoin(RzSplit(line)) == line
+    in: template is str, bytes, or RzRecord; ints is sequence of int;
+        strs is sequence of str or bytes
+    out: reconstructed string or byte string matching template type
+    own: returns newly allocated Python str or bytes owning its memory
+    thread: thread-safe; releases GIL in native C++ engine during join
+    err: raises RzError on mismatched placeholder counts or invalid types
 
     Parameters
     ----------
     template : str, bytes, or RzRecord
-        The template containing {i} and {s} placeholders, or an RzRecord.
+        template containing {i} and {s} placeholders, or an RzRecord
     ints : sequence of int, optional
-        Integers corresponding to {i} placeholders.
+        integers corresponding to {i} placeholders
     strs : sequence of str or bytes, optional
-        Strings corresponding to {s} placeholders.
+        strings corresponding to {s} placeholders
 
     Returns
     -------
     str or bytes
-        The reconstructed line, matching the type of the template.
+        reconstructed line, matching the type of the template
 
     Examples
     --------
@@ -162,11 +194,13 @@ def RzJoin(
     >>> rz.RzJoin(*rec) == line
     True
     """
+    # unpack RzRecord or 3-tuple if passed as first argument
     if hasattr(template, "template") and hasattr(template, "ints") and hasattr(template, "strs"):
         template, ints, strs = template.template, template.ints, template.strs
     elif isinstance(template, tuple) and len(template) == 3 and ints is None and strs is None:
         template, ints, strs = template[0], template[1], template[2]
 
+    # treat omitted parameter collections as empty sequences
     if ints is None:
         ints = []
     if strs is None:
@@ -188,19 +222,26 @@ def RzJoin(
 
 
 def RzTemplate(line: Union[str, bytes], mode: str = "semantic") -> Union[str, bytes]:
-    """Extract only the structural template for a log line without allocating parameter lists.
+    """extract structural template for a log line without parameter lists
+
+    inv: template matches RzSplit(line).template byte-for-byte
+    in: line is str or bytes; mode is 'semantic' or 'exact'
+    out: template string or bytes containing {i} and {s} placeholders
+    own: returns newly allocated Python str or bytes owning its memory
+    thread: thread-safe; releases GIL in native C++ engine
+    err: raises RzError on unsupported type or invalid scan mode
 
     Parameters
     ----------
     line : str or bytes
-        The log line to extract the template from.
+        log line to extract template from
     mode : {"semantic", "exact"}, default="semantic"
-        Token scanning behavior.
+        token scanning behavior
 
     Returns
     -------
     str or bytes
-        The template with {i} and {s} placeholders.
+        template with {i} and {s} placeholders
     """
     if not isinstance(line, (str, bytes)):
         raise RzError(
@@ -223,19 +264,26 @@ def RzTemplate(line: Union[str, bytes], mode: str = "semantic") -> Union[str, by
 
 
 def RzSplitMany(lines: Iterable[Union[str, bytes]], mode: str = "semantic") -> List[RzRecord]:
-    """Split an iterable of log lines in batch, releasing the GIL across CPU cores.
+    """split an iterable of log lines in batch, releasing GIL across cores
+
+    inv: all(RzJoin(r) == l for r, l in zip(RzSplitMany(lines), lines))
+    in: lines is iterable of str or bytes; mode is 'semantic' or 'exact'
+    out: list of RzRecord namedtuples matching input order
+    own: returns newly allocated Python list and record objects
+    thread: thread-safe; releases GIL in native C++ engine across OpenMP threads
+    err: raises RzError on non-str/bytes item or invalid scan mode
 
     Parameters
     ----------
     lines : iterable of str or bytes
-        Log lines to split.
+        log lines to split
     mode : {"semantic", "exact"}, default="semantic"
-        Token scanning behavior.
+        token scanning behavior
 
     Returns
     -------
     list of RzRecord
-        Decomposed records for all input lines.
+        decomposed records for all input lines
     """
     if mode not in ("semantic", "exact"):
         raise RzError(
@@ -261,19 +309,24 @@ def RzSplitMany(lines: Iterable[Union[str, bytes]], mode: str = "semantic") -> L
 
 
 def RzHash(line: Union[str, bytes]) -> int:
-    """Compute deterministic 64-bit template or message hash (xxHash64, seed 0).
+    """compute deterministic 64-bit template or message hash via xxHash64 (seed 0)
 
-    Matches DuckDB's RzHash() and ClickHouse's xxHash64() exactly bit-for-bit.
+    inv: bit-identical to DuckDB RzHash() and ClickHouse xxHash64()
+    in: line is str or bytes
+    out: 64-bit unsigned integer hash [0, 2^64 - 1]
+    own: returns immutable Python integer
+    thread: thread-safe; calls xxHash64 with zero shared state
+    err: raises RzError on non-str/bytes input
 
     Parameters
     ----------
     line : str or bytes
-        The template or message string or bytes to hash.
+        template or message string or bytes to hash
 
     Returns
     -------
     int
-        64-bit unsigned integer hash.
+        64-bit unsigned integer hash
 
     Examples
     --------
@@ -297,8 +350,11 @@ def RzHash(line: Union[str, bytes]) -> int:
         raise RzError(str(exc)) from exc
 
 
+# -- package metadata and public symbols ---------------------------------------
+
 __version__ = "1.1.2"
 
+# public export surface pinned to <= 8 symbols per TestPyRazobill compliance
 __all__ = [
     "RzSplit",
     "RzJoin",
@@ -310,7 +366,9 @@ __all__ = [
     "__version__",
 ]
 
-# Ergonomic aliases resolved dynamically to maintain strict __all__ surface budget
+# -- dynamic alias resolution -------------------------------------------------
+
+# ergonomic lowercase aliases resolved dynamically to keep __all__ compact
 _ALIASES = {
     "split": RzSplit,
     "join": RzJoin,
@@ -324,10 +382,12 @@ _ALIASES = {
 
 
 def __getattr__(name: str):
+    """resolve lowercase export aliases without bloating module namespace"""
     if name in _ALIASES:
         return _ALIASES[name]
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
 def __dir__():
+    """include dynamic aliases in interactive tab completion and dir() listing"""
     return sorted(list(globals().keys()) + list(_ALIASES.keys()))

@@ -1,3 +1,11 @@
+# ==============================================================================
+# pyrazobill source distribution manifest (MANIFEST.in)
+#
+# specifies non-python files, C++ sources, headers, and thirdparty dependencies
+# bundled into standalone pyrazobill source distribution tarballs (sdist)
+# ==============================================================================
+
+# root documentation and licenses
 include README.md
 include LICENSE
 include NOTICE
@@ -5,8 +13,14 @@ include pyproject.toml
 include setup.py
 include PyRazobill.cpp
 include Guide.md
+
+# python package assets and type stubs
 recursive-include pyrazobill *.py py.typed *.pyi
+
+# staged c++ engine source and header trees for standalone compilation
 recursive-include srcCore *.cpp
 recursive-include includeCore *.hpp *.h
 recursive-include thirdpartyCore *
+
+# python unit and property test suites
 recursive-include tests *.py

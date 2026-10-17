@@ -1,27 +1,18 @@
 #!/usr/bin/env python3
-"""
-Unit and Integration Test Suite for pyrazobill Python library.
-==============================================================
+# ==============================================================================
+# pyrazobill unit and integration test suite
+#
+# validates exact invertibility, template extraction, xxHash64 bit parity,
+# edge cases, actionable error model, and public surface budget compliance
+# ==============================================================================
 
-Verifies:
-1. Exact lossless invertibility: RzJoin(*RzSplit(x)) == x for str and bytes.
-2. Direct container join: RzJoin(rec) == x.
-3. Fast template extraction: RzTemplate(x).
-4. Multi-line batch processing: RzSplitMany(lines).
-5. Comprehensive edge case resilience:
-   - Empty string and bytes
-   - Invalid UTF-8 bytes and NUL characters
-   - Leading zeros and oversized integers
-   - Literal braces {{ and }}
-6. Actionable error model: RzError with explanatory guidance.
-7. Public surface compliance: <= 8 names in __all__, zero banned terms.
-"""
+"""unit and integration test suite for pyrazobill Python library"""
 
 import sys
 import unittest
 from pathlib import Path
 
-# Add lib/python directory to sys.path
+# add lib/python directory to sys.path
 pkg_dir = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(pkg_dir))
 
@@ -30,7 +21,10 @@ import pyrazobill._fallback as _fallback
 
 
 class TestPyRazobill(unittest.TestCase):
+    """unit and integration test cases for pyrazobill public API and fallback"""
+
     def test_split_and_join_str(self):
+        # pins exact lossless invertibility for unicode str inputs
         msg = "Failed password for root from 192.168.1.100 port 22 ssh2"
         rec = rz.RzSplit(msg)
 
@@ -40,11 +34,12 @@ class TestPyRazobill(unittest.TestCase):
         self.assertEqual(rec.ints, [22])
         self.assertEqual(rec.strs, ["root", "192.168.1.100", "ssh2"])
 
-        # Invertibility via tuple unpacking and direct record pass
+        # invertibility via tuple unpacking and direct record pass
         self.assertEqual(rz.RzJoin(*rec), msg)
         self.assertEqual(rz.RzJoin(rec), msg)
 
     def test_split_and_join_bytes(self):
+        # pins exact lossless invertibility for binary bytes inputs
         b_msg = b"Failed password for admin from 10.0.0.1 port 2222"
         rec = rz.RzSplit(b_msg)
 
@@ -57,6 +52,7 @@ class TestPyRazobill(unittest.TestCase):
         self.assertEqual(rz.RzJoin(rec), b_msg)
 
     def test_template_fast_path(self):
+        # pins template extraction parity without allocating token containers
         msg = "Accepted publickey for ubuntu from 10.1.2.3 port 54322 ssh2"
         tmpl_str = rz.RzTemplate(msg)
         self.assertEqual(tmpl_str, "Accepted publickey for {s} from {s} port {i} {s}")
@@ -66,17 +62,19 @@ class TestPyRazobill(unittest.TestCase):
         self.assertEqual(tmpl_bytes, b"Accepted publickey for {s} from {s} port {i} {s}")
 
     def test_hash_xxh64(self):
+        # pins xxHash64 bit-identity (seed 0) against DuckDB and ClickHouse
         tmpl = "Failed password for {s} from {s} port {i}"
         expected_hash = 54855824174769941
         self.assertEqual(rz.RzHash(tmpl), expected_hash)
         self.assertEqual(rz.RzHash(tmpl.encode("utf-8")), expected_hash)
         self.assertEqual(rz.hash(tmpl), expected_hash)
 
-        # Invalid type check
+        # invalid type check
         with self.assertRaises(rz.RzError):
             rz.RzHash(12345)  # type: ignore
 
     def test_split_many_batch(self):
+        # pins multi-line batch decomposition and record invertibility
         lines = [f"Receiving block blk_{i} src: /10.0.0.1:{50000 + i} dest: /10.0.0.2:50010" for i in range(500)]
         records = rz.RzSplitMany(lines)
         self.assertEqual(len(records), 500)
@@ -84,6 +82,7 @@ class TestPyRazobill(unittest.TestCase):
             self.assertEqual(rz.RzJoin(rec), lines[i])
 
     def test_modes_semantic_vs_exact(self):
+        # pins semantic template normalization and exact mode recovery
         line1 = "Failed password for root from 10.0.0.1 port 22"
         line2 = "Failed password for admin from 10.0.0.1 port 22"
 
@@ -97,6 +96,7 @@ class TestPyRazobill(unittest.TestCase):
         self.assertEqual(rz.RzJoin(rec1_ex), line1)
 
     def test_edge_cases_empty(self):
+        # pins empty string and empty byte sequence round-trip
         rec_str = rz.RzSplit("")
         self.assertEqual(rec_str.template, "")
         self.assertEqual(rec_str.ints, [])
@@ -110,6 +110,7 @@ class TestPyRazobill(unittest.TestCase):
         self.assertEqual(rz.RzJoin(rec_bytes), b"")
 
     def test_edge_cases_quoted_backslashes(self):
+        # pins quote parsing, escaped backslashes, and unclosed quote fallback
         cases = [
             '"\\"',
             "'\\'",
@@ -125,17 +126,17 @@ class TestPyRazobill(unittest.TestCase):
             '"\\\\\\""',
         ]
         for s in cases:
-            # Native C++ engine
+            # native c++ engine
             rec = rz.RzSplit(s)
             self.assertEqual(rz.RzJoin(*rec), s)
             self.assertEqual(rz.RzJoin(rec), s)
 
-            # Pure-Python fallback engine
+            # pure-python fallback engine
             fb_rec = _fallback.split(s, "semantic")
             self.assertEqual(_fallback.join(fb_rec[0], fb_rec[1], fb_rec[2]), s)
 
     def test_edge_cases_invalid_utf8_and_nul(self):
-        # Arbitrary raw byte strings with invalid UTF-8 and NUL bytes
+        # pins binary payload with invalid UTF-8 and embedded NUL bytes
         raw = b"Log \xff\xfe with \x00 NUL and 12345 value \x80\x81\x82"
         rec = rz.RzSplit(raw)
         self.assertIsInstance(rec.template, bytes)
@@ -143,51 +144,55 @@ class TestPyRazobill(unittest.TestCase):
         self.assertEqual(rz.RzJoin(rec), raw)
 
     def test_edge_cases_leading_zeros(self):
+        # pins string promotion for tokens with leading zeros to prevent loss
         msg = "Padded IDs: 00123, 000, 0, and 456"
         rec = rz.RzSplit(msg)
-        # Leading zeros are preserved as strings to prevent precision distortion
+        # leading zeros are preserved as strings to prevent precision distortion
         self.assertEqual(rz.RzJoin(rec), msg)
 
     def test_edge_cases_oversized_integers(self):
+        # pins string promotion for integers > 18 digits to prevent overflow
         msg = "Large token 9999999999999999999999999999999999999999 end"
         rec = rz.RzSplit(msg)
         self.assertEqual(rz.RzJoin(rec), msg)
 
     def test_edge_cases_literal_braces(self):
+        # pins lossless round-trip of literal single and doubled curly braces
         msg = "Payload: {json_key: 123} and {{escaped}} braces {single"
         rec = rz.RzSplit(msg)
         self.assertEqual(rz.RzJoin(rec), msg)
 
     def test_error_handling(self):
-        # Unsupported type
+        # pins actionable four-part error message formatting on invalid inputs
+        # unsupported type
         with self.assertRaises(rz.RzError) as ctx:
             rz.RzSplit(12345)
         self.assertIn("Unsupported input type", str(ctx.exception))
         self.assertIn("What to do", str(ctx.exception))
 
-        # Invalid mode
+        # invalid mode
         with self.assertRaises(rz.RzError) as ctx:
             rz.RzSplit("test", mode="unsupported")
         self.assertIn("Invalid scan mode", str(ctx.exception))
 
-        # Join count mismatch: too few ints
+        # join count mismatch: too few ints
         with self.assertRaises(rz.RzError) as ctx:
             rz.RzJoin("Port {i} and {i}", [80], [])
         self.assertIn("Count mismatch", str(ctx.exception))
         self.assertIn("Offending template", str(ctx.exception))
 
-        # Join count mismatch: too many strs
+        # join count mismatch: too many strs
         with self.assertRaises(rz.RzError) as ctx:
             rz.RzJoin("User {s}", [], ["root", "extra"])
         self.assertIn("Count mismatch", str(ctx.exception))
 
-        # Malformed template: unclosed brace
+        # malformed template: unclosed brace
         with self.assertRaises(rz.RzError) as ctx:
             rz.RzJoin("Unclosed { brace", [], [])
         self.assertIn("Malformed template syntax", str(ctx.exception))
 
     def test_surface_budget(self):
-        # Surface budget hard cap: <= 8 names in __all__
+        # pins strict API surface budget of <= 8 exported names in __all__
         self.assertLessEqual(len(rz.__all__), 8)
         expected_names = {
             "RzSplit",
@@ -201,7 +206,7 @@ class TestPyRazobill(unittest.TestCase):
         }
         self.assertEqual(set(rz.__all__), expected_names)
 
-        # Ergonomic aliases available
+        # ergonomic aliases available
         self.assertIs(rz.split, rz.RzSplit)
         self.assertIs(rz.join, rz.RzJoin)
         self.assertIs(rz.template, rz.RzTemplate)
@@ -211,6 +216,7 @@ class TestPyRazobill(unittest.TestCase):
         self.assertIs(rz.Error, rz.RzError)
 
     def test_zero_banned_terms(self):
+        # pins complete absence of banned internal jargon in public docstrings
         banned = [
             "entropy",
             "ledger",

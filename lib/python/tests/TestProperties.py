@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
-"""
-Property-Based Testing Suite for pyrazobill (Hypothesis).
-=========================================================
+# ==============================================================================
+# pyrazobill property-based testing suite (Hypothesis)
+#
+# verifies mathematical invariants across generated inputs:
+#   1. universal lossless roundtrip for arbitrary Unicode strings:
+#      forall m in Sigma*, RzJoin(*RzSplit(m)) == m
+#   2. universal lossless roundtrip for arbitrary byte sequences:
+#      forall b in Bytes*, RzJoin(*RzSplit(b)) == b
+#   3. batch invariant:
+#      forall L in List[str], [RzJoin(r) for r in RzSplitMany(L)] == L
+#   4. template extraction equivalence:
+#      forall m in Sigma*, RzTemplate(m) == RzSplit(m).template
+# ==============================================================================
 
-Verifies fundamental mathematical and algorithmic invariants:
-1. Universal Lossless Roundtrip for arbitrary Unicode strings:
-   forall m in Sigma*, RzJoin(*RzSplit(m)) == m
-   forall m in Sigma*, RzJoin(RzSplit(m)) == m
-2. Universal Lossless Roundtrip for arbitrary byte sequences (including invalid UTF-8 and NUL):
-   forall b in Bytes*, RzJoin(*RzSplit(b)) == b
-3. Batch Invariant:
-   forall L in List[str], [RzJoin(r) for r in RzSplitMany(L)] == L
-4. Template Extraction Equivalence:
-   forall m in Sigma*, RzTemplate(m) == RzSplit(m).template
-"""
+"""property-based fuzz test suite for pyrazobill invariants via Hypothesis"""
 
 import sys
 import unittest
 from pathlib import Path
 
-# Add lib/python directory to sys.path
+# add lib/python directory to sys.path
 pkg_dir = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(pkg_dir))
 
@@ -28,6 +28,8 @@ from hypothesis import given, settings, strategies as st, example
 
 
 class TestHypothesisProperties(unittest.TestCase):
+    """fuzz testing suite asserting universal algebraic invariants"""
+
     @settings(max_examples=200, deadline=None)
     @given(st.text(min_size=0, max_size=10000))
     @example("")
@@ -37,7 +39,8 @@ class TestHypothesisProperties(unittest.TestCase):
     @example("Special chars: \x12 \x13 \x00 \t \n \r \\ \" ' [ ] { } : =")
     @example("🚀🔥 Unicode emojis and accents: é à ö ü ñ 日本語 12345")
     def test_lossless_roundtrip_exact_mode(self, msg: str):
-        """Invariant: Exact mode must reconstruct any input string byte-for-byte."""
+        """invariant: exact mode must reconstruct any input string byte-for-byte"""
+        # pins exact lossless invertibility: RzJoin(RzSplit(m, 'exact')) == m
         rec = rz.RzSplit(msg, mode="exact")
         self.assertIsNotNone(rec)
         self.assertEqual(rz.RzJoin(*rec), msg)
@@ -50,7 +53,8 @@ class TestHypothesisProperties(unittest.TestCase):
     @example("Leading zeros 00123 000 0")
     @example("Literal braces {{foo}} {bar} {")
     def test_lossless_roundtrip_semantic_mode(self, msg: str):
-        """Invariant: Semantic mode must reconstruct any input string byte-for-byte."""
+        """invariant: semantic mode must reconstruct any input string byte-for-byte"""
+        # pins semantic invertibility: RzJoin(RzSplit(m, 'semantic')) == m
         rec = rz.RzSplit(msg, mode="semantic")
         self.assertIsNotNone(rec)
         self.assertEqual(rz.RzJoin(*rec), msg)
@@ -62,7 +66,8 @@ class TestHypothesisProperties(unittest.TestCase):
     @example(b"\x00")
     @example(b"\xff\xfe\x00\x80 invalid utf8 with 123 numbers")
     def test_lossless_roundtrip_bytes(self, b_msg: bytes):
-        """Invariant: Raw bytes must reconstruct byte-for-byte without distortion."""
+        """invariant: raw bytes must reconstruct byte-for-byte without distortion"""
+        # pins binary bytes invertibility: RzJoin(RzSplit(b)) == b
         rec = rz.RzSplit(b_msg)
         self.assertIsInstance(rec.template, bytes)
         self.assertEqual(rz.RzJoin(*rec), b_msg)
@@ -71,7 +76,8 @@ class TestHypothesisProperties(unittest.TestCase):
     @settings(max_examples=100, deadline=None)
     @given(st.lists(st.text(min_size=0, max_size=500), min_size=0, max_size=50))
     def test_batch_reconstruct_invariant(self, lines: list):
-        """Invariant: Batch split and sequential join must match all original lines."""
+        """invariant: batch split and sequential join must match all original lines"""
+        # pins batch invertibility across lists of arbitrary strings
         records = rz.RzSplitMany(lines)
         self.assertEqual(len(records), len(lines))
         for original, rec in zip(lines, records):
@@ -80,7 +86,8 @@ class TestHypothesisProperties(unittest.TestCase):
     @settings(max_examples=100, deadline=None)
     @given(st.text(min_size=0, max_size=500))
     def test_template_equivalence(self, msg: str):
-        """Invariant: RzTemplate(m) must return identical template as RzSplit(m).template."""
+        """invariant: RzTemplate(m) must return identical template as RzSplit(m).template"""
+        # pins template identity: RzTemplate(m) == RzSplit(m).template
         tmpl = rz.RzTemplate(msg)
         rec = rz.RzSplit(msg)
         self.assertEqual(tmpl, rec.template)

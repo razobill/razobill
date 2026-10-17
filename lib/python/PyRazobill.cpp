@@ -1,5 +1,16 @@
-// PyRazobill: Pybind11 Python bindings for librazobill.
-// Provides zero-allocation C++20 parsing, exact lossless joining, and multi-core batch processing.
+// =============================================================================
+//  file : lib/python/PyRazobill.cpp
+//  role : pybind11 cpython bindings for librazobill engine
+//  inv  : exact lossless roundtrip; gil release on parallel batch workloads
+// =============================================================================
+
+/// pybind11 cpython bindings exposing librazobill core engine to python
+///
+/// bridges python str/bytes objects to zero-allocation c++20 slot scanner:
+/// - input bytes returns (bytes, list[int], list[bytes])
+/// - input str uses utf-8 with surrogateescape to ensure exact roundtrip of
+///   malformed or non-utf8 byte streams without data corruption
+/// - release gil during batch operations across worker threads in ThreadPool
 
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -26,15 +37,24 @@ using namespace razobill;
 
 namespace {
 
+// -- thread pool and concurrency lifecycle ------------------------------------
+
+/// returns reference to process-wide thread pool holder
 std::unique_ptr<core::ThreadPool>& getThreadPoolHolder() {
     static std::unique_ptr<core::ThreadPool> pool = std::make_unique<core::ThreadPool>();
     return pool;
 }
 
+/// retrieves process thread pool, registering pthread_atfork handler on posix
+///
+/// inv     re-initializes pool in forked child processes to prevent deadlocks
+/// out     reference to active ThreadPool instance
+/// thread  thread-safe via std::call_once
 core::ThreadPool& getThreadPool() {
     static std::once_flag initFork;
     std::call_once(initFork, [] {
 #ifndef _WIN32
+        // ~ resets pool on fork so child workers do not inherit locked mutexes
         pthread_atfork(nullptr, nullptr, [] { getThreadPoolHolder() = std::make_unique<core::ThreadPool>(); });
 #endif
     });
@@ -45,6 +65,13 @@ core::ThreadPool& getThreadPool() {
     return *p;
 }
 
+// -- parameter parsing and error formatting ----------------------------------
+
+/// parses scan mode string into strongly-typed scan enum
+///
+/// in      mode string ("semantic" or "exact")
+/// out     core::ScanMode enum value
+/// err     throws py::value_error on unrecognized scan mode
 core::ScanMode parseMode(const std::string& mode) {
     if (mode == "semantic") return core::ScanMode::Semantic;
     if (mode == "exact") return core::ScanMode::Exact;
@@ -55,11 +82,19 @@ core::ScanMode parseMode(const std::string& mode) {
                           "What to do: Pass mode='semantic' (default) or mode='exact'.");
 }
 
+/// truncates diagnostic string view to maximum character length
+///
+/// in      sv candidate text to truncate; maxLen character limit
+/// out     truncated string with trailing ellipsis if length exceeded
 std::string truncateOffending(std::string_view sv, size_t maxLen = 80) {
     if (sv.size() <= maxLen) return std::string(sv);
     return std::string(sv.substr(0, maxLen - 3)) + "...";
 }
 
+/// formats human-readable error description for reconstruction failures
+///
+/// in      st engine status code; tmpl offending template text
+/// out     structured error message string with remediation advice
 std::string formatJoinError(Status st, std::string_view tmpl) {
     std::string why;
     switch (st) {
@@ -86,6 +121,14 @@ std::string formatJoinError(Status st, std::string_view tmpl) {
            truncateOffending(tmpl) + "'.";
 }
 
+// -- single-message binding implementations ----------------------------------
+
+/// splits single log message into template, integer slots, and string slots
+///
+/// inv     lossless: preserves exact characters; str input uses surrogateescape
+/// in      input str or bytes; modeStr scan mode ("semantic" or "exact")
+/// out     py::tuple(template, list[int], list[str|bytes]) matching input type
+/// err     throws py::type_error on bad type; py::value_error on bad syntax
 py::tuple splitOne(const py::object& input, const std::string& modeStr) {
     const core::ScanMode mode = parseMode(modeStr);
 
@@ -119,6 +162,7 @@ py::tuple splitOne(const py::object& input, const std::string& modeStr) {
     }
 
     if (py::isinstance<py::str>(input)) {
+        // ~ surrogateescape preserves raw invalid utf-8 bytes without throwing
         PyObject* encoded = PyUnicode_AsEncodedString(input.ptr(), "utf-8", "surrogateescape");
         if (!encoded) throw py::error_already_set();
 
@@ -173,6 +217,12 @@ py::tuple splitOne(const py::object& input, const std::string& modeStr) {
                          "What to do: Pass a str or bytes object.");
 }
 
+/// extracts template without allocating integer or string slot vectors
+///
+/// inv     produces identical template to splitOne(); zero slot allocation
+/// in      input str or bytes; modeStr scan mode ("semantic" or "exact")
+/// out     template string or bytes matching input object type
+/// err     throws py::type_error on bad type; py::value_error on scan error
 py::object templateOne(const py::object& input, const std::string& modeStr) {
     const core::ScanMode mode = parseMode(modeStr);
 
@@ -230,6 +280,15 @@ py::object templateOne(const py::object& input, const std::string& modeStr) {
                          "What to do: Pass a str or bytes object.");
 }
 
+/// reconstructs original log message from template and extracted variable slots
+///
+/// inv     exact invertibility: join(split(x)) == x for every valid string;
+///         pins law join(split(x)) == x in lib/python/tests/TestProperties.py
+/// in      tmplObj str or bytes template with {i} and {s} placeholders;
+///         intsSeq sequence of 64-bit ints; strsSeq sequence of str or bytes
+/// out     reconstructed message string or bytes matching template type
+/// err     throws py::type_error on invalid argument types;
+///         throws py::value_error on placeholder count mismatch or syntax error
 py::object joinOne(const py::object& tmplObj, const py::sequence& intsSeq, const py::sequence& strsSeq) {
     const bool isBytes = py::isinstance<py::bytes>(tmplObj);
     const bool isStr = py::isinstance<py::str>(tmplObj);
@@ -306,6 +365,16 @@ py::object joinOne(const py::object& tmplObj, const py::sequence& intsSeq, const
     return py::reinterpret_steal<py::object>(pyRes);
 }
 
+// -- multi-threaded batch processing ----------------------------------------
+
+/// batch splits sequence of messages releasing GIL across worker thread pool
+///
+/// inv     exact lossless: each output tuple matches individual splitOne(msg);
+///         batches > 128 items release GIL and parallelize in 256-item chunks
+/// in      inputs iterable of str or bytes; modeStr scan mode
+/// out     py::list of (template, ints, strs) tuples
+/// thread  releases GIL via py::gil_scoped_release during scanning
+/// err     throws py::type_error on invalid type; py::value_error on scan error
 py::list splitMany(const py::sequence& inputs, const std::string& modeStr) {
     const core::ScanMode mode = parseMode(modeStr);
     const size_t total = py::len(inputs);
@@ -419,6 +488,15 @@ py::list splitMany(const py::sequence& inputs, const std::string& modeStr) {
     return outList;
 }
 
+// -- hashing and parity verification -----------------------------------------
+
+/// computes 64-bit xxHash64 of string or bytes input with seed 0
+///
+/// inv     bit-identical parity across C++, Python, DuckDB, and ClickHouse;
+///         pinned by TestPyRazobill.test_hash_parity against known vectors
+/// in      input str or bytes object
+/// out     uint64_t hash digest
+/// err     throws py::type_error if input is neither str nor bytes
 uint64_t hashOne(const py::object& input) {
     if (py::isinstance<py::bytes>(input)) {
         auto b = input.cast<py::bytes>();
@@ -445,17 +523,30 @@ uint64_t hashOne(const py::object& input) {
 
 } // namespace
 
+// -- pybind11 module declaration ----------------------------------------------
+
 PYBIND11_MODULE(Core, m) {
     m.doc() = "Razobill native C++20 SIMD core module";
 
+    // native single-line decomposition: (template, ints, strs)
     m.def("split", &splitOne, py::arg("input"), py::arg("mode") = "semantic",
           "Splits a single log line (str or bytes) into (template, ints, strs)");
+
+    // fast-path template extraction without allocating variable slot lists
     m.def("template", &templateOne, py::arg("input"), py::arg("mode") = "semantic",
           "Extracts template from a single log line (str or bytes) without allocating slot lists");
+
+    // exact inverse reconstruction satisfying join(split(x)) == x
     m.def("join", &joinOne, py::arg("template"), py::arg("ints"), py::arg("strs"),
           "Reconstructs original log line from template, ints, and strs");
+
+    // parallel batch decomposition with GIL release
     m.def("split_many", &splitMany, py::arg("inputs"), py::arg("mode") = "semantic",
           "Splits an iterable of log lines with GIL release across worker threads");
+
+    // xxHash64 bit-identical hashing
     m.def("hash", &hashOne, py::arg("input"), "Computes 64-bit xxHash64 (seed 0) of a string or bytes input");
+
+    // semantic engine version string
     m.def("version", [] { return std::string(LIBRAZOBILL_VERSION_STRING); }, "Returns semantic library version");
 }

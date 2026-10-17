@@ -1,9 +1,15 @@
-"""
-setup.py for pyrazobill
+# ==============================================================================
+# pyrazobill setup and C++20 extension build script
+#
+# compiles native pyrazobill.Core extension from C++ source files; provides
+# Windows SDK path auto-detection and resilient pure-Python fallback on compiler
+# failure or missing pybind11 headers
+# ==============================================================================
 
-High-performance C++20 Python bindings for Razobill.
-Compiles the native pyrazobill.Core extension module from C++ source files,
-with resilient pure-Python fallback when compilers/SDKs are absent.
+"""setup.py for pyrazobill
+
+compiles native pyrazobill.Core C++20 extension module with AVX2 SIMD
+acceleration and pure-Python fallback
 """
 
 import sys
@@ -15,7 +21,7 @@ from setuptools import setup
 baseDir = Path(__file__).resolve().parent
 repoRoot = baseDir.parent.parent
 
-# Monorepo single-source-of-truth vs standalone sdist distribution
+# monorepo source routing vs standalone sdist distribution layout
 if (repoRoot / "src").exists() and (repoRoot / "include").exists():
     sources = [
         "PyRazobill.cpp",
@@ -33,7 +39,7 @@ if (repoRoot / "src").exists() and (repoRoot / "include").exists():
         os.path.relpath(repoRoot / "thirdparty" / "duckdbcapi", baseDir).replace("\\", "/"),
     ]
 else:
-    # Standalone sdist package using staged directories
+    # standalone sdist package using staged core directory copies
     sources = [
         "PyRazobill.cpp",
         "srcCore/Slots.cpp",
@@ -52,9 +58,16 @@ else:
 
 
 def find_windows_sdk_dirs():
+    """discover Windows 10/11 SDK include and library directories
+
+    in: sys.platform == 'win32'
+    out: tuple of (include_directories_list, library_directories_list)
+    thread: thread-safe, reads environment and filesystem
+    """
     inc_dirs = []
     lib_dirs = []
     if sys.platform == "win32":
+        # locate Windows Kits 10 header tree (ucrt, shared, um, winrt)
         pf86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
         kits_inc = os.path.join(pf86, "Windows Kits", "10", "Include")
         if os.path.exists(kits_inc):
@@ -65,6 +78,7 @@ def find_windows_sdk_dirs():
                     p = os.path.join(latest, sub)
                     if os.path.exists(p):
                         inc_dirs.append(p)
+        # locate Windows Kits 10 library tree for target architecture
         kits_lib = os.path.join(pf86, "Windows Kits", "10", "Lib")
         if os.path.exists(kits_lib):
             versions = sorted(glob.glob(os.path.join(kits_lib, "10.*")), reverse=True)
@@ -82,21 +96,28 @@ try:
     from pybind11.setup_helpers import Pybind11Extension, build_ext
 
     class CustomBuildExt(build_ext):
+        """custom extension builder injecting C++20 and SIMD architecture flags"""
+
         def build_extensions(self):
             compilerType = self.compiler.compiler_type
             inc_dirs, lib_dirs = find_windows_sdk_dirs()
             for ext in self.extensions:
                 if compilerType == "msvc":
+                    # enable C++20, AVX2 vectorization, synchronous exceptions,
+                    # and 2^32 object sections
                     ext.extra_compile_args.extend(["/std:c++20", "/arch:AVX2", "/EHsc", "/bigobj"])
                     ext.include_dirs.extend(inc_dirs)
                     ext.library_dirs.extend(lib_dirs)
                 else:
+                    # enable C++20, host-native SIMD instructions, and hidden
+                    # symbol visibility
                     ext.extra_compile_args.extend(["-std=c++20", "-march=native", "-fvisibility=hidden"])
                     if sys.platform != "win32":
                         ext.extra_link_args.append("-lpthread")
             try:
                 super().build_extensions()
             except Exception as exc:
+                # fall back to pure-Python engine if compilation fails
                 print(f"\n[pyrazobill] NOTICE: Native C++20 extension build failed ({exc}).")
                 print("[pyrazobill] Proceeding with pure-Python fallback implementation.\n")
                 self.extensions = []
@@ -111,6 +132,7 @@ try:
     ]
     cmdClass = {"build_ext": CustomBuildExt}
 except ImportError:
+    # pybind11 not installed at build time; build as pure-Python wheel
     extModules = []
     cmdClass = {}
 

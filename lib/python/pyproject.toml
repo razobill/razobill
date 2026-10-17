@@ -1,3 +1,10 @@
+# ==============================================================================
+# pyrazobill python packaging configuration (PEP 517 / PEP 621)
+#
+# specifies build dependencies (setuptools, pybind11, wheel), package metadata,
+# pytest configuration, and package data inclusion rules
+# ==============================================================================
+
 [build-system]
 requires = ["setuptools>=65.0.0", "pybind11>=3.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
@@ -46,6 +53,7 @@ Issues = "https://github.com/razobill/razobill/issues"
 Changelog = "https://github.com/razobill/razobill/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
+# development, testing, and property-based fuzzing dependencies
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
@@ -55,6 +63,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
+# test discovery patterns matching unit and property test suites
 python_files = ["Test*.py", "test_*.py"]
 
 [tool.setuptools.packages.find]
@@ -62,4 +71,5 @@ where = ["."]
 include = ["pyrazobill*"]
 
 [tool.setuptools.package-data]
+# include type stubs (py.typed, Core.pyi) and compiled extension binaries
 pyrazobill = ["py.typed", "*.pyi", "*.pyd", "*.so", "*.dll"]

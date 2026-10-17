@@ -69,6 +69,7 @@ Deep-dive articles explaining architectural choices, proofs, and performance tra
 | [Data-oriented design](explanation/data-oriented-design.md) | How does memory layout maximize CPU cache prefetching? | Structure-of-Arrays (SoA) layout with 64-byte alignment. |
 | [SIMD vectorization](explanation/simd-vectorization.md) | How do vector instructions eliminate branch mispredictions? | Parallel 32/64-byte chunk comparisons and hardware trailing zero count. |
 | [Concurrency model](explanation/concurrency-model.md) | How does Razobill scale across multi-core systems without locks? | Thread-local scratchpads and work-stealing thread pool. |
+| [Lifetime safety analysis](explanation/lifetime-safety.md) | How do compile-time lifetime checks eliminate dangling views? | Zero runtime cost borrow checking and GSL contracts. |
 
 ---
 

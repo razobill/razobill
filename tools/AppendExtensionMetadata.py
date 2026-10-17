@@ -1,45 +1,46 @@
 #!/usr/bin/env python3
-"""
-DuckDB Extension Metadata Appender & Footer Signer
-===================================================
-
-WHY THIS EXISTS:
-DuckDB strictly requires loadable extensions (.duckdb_extension) to carry a 512-byte
-trailing metadata footer. This footer encodes:
-- ABI type: 'C_STRUCT' (stable C API) vs C++ internal ABI
-- DuckDB C API version (e.g. 'v1.2.0')
-- Extension version (e.g. 'v1.0.0')
-- Target platform string (e.g. 'windows_amd64_mingw', 'linux_amd64')
-
-Without this binary footer, DuckDB's extension loader refuses to touch the .dll / .so file!
-This script stamps the footer so DuckDB recognizes librazobill as a first-class extension.
-"""
+# =============================================================================
+# DuckDB extension metadata appender and footer stamper
+#
+# appends 512-byte trailing metadata footer to loadable .duckdb_extension
+# encoding ABI type (C_STRUCT), DuckDB C API version, and target platform
+# ~ لو البايتات دي ناقصة دك دي بي بيرفض يفتح الامتداد نهائياً
+# =============================================================================
 
 import argparse
 import shutil
 
 
+# generates WebAssembly custom section header and DuckDB signature preamble
 def start_signature():
-    # This is needed so that Wasm binaries are valid
+    """Generate 19-byte DuckDB extension signature header prefix.
+
+    out: binary byte string encoding custom section header and name
+    """
+    # needed so that WebAssembly binaries are recognized as valid
     encoded_string = "".encode("ascii")
     # 0 for custom section
     encoded_string += int(0).to_bytes(1, byteorder="big")
-    # 213 in hex = 531 in decimal, total lenght of what follows (1 + 16 + 2 + 8x32 + 256)
-    # [1(continuation) + 0010011(payload) = \x93 -> 147, 0(continuation) + 10(payload) = \x04 -> 4]
+    # 213 in hex = 531 in decimal, total length of trailing footer payload
     encoded_string += int(147).to_bytes(1, byteorder="big")
     encoded_string += int(4).to_bytes(1, byteorder="big")
-    # 10 in hex = 16 in decimal, lenght of name, 1 byte
+    # 10 in hex = 16 in decimal, length of signature name
     encoded_string += int(16).to_bytes(1, byteorder="big")
-    # the name of the WebAssembly custom section, 16 bytes
+    # name of WebAssembly custom section
     encoded_string += b"duckdb_signature"
-    # 1000 in hex, 512 in decimal
-    # [1(continuation) + 0000000(payload) = -> 128, 0(continuation) + 100(payload) -> 4],
+    # 512 in decimal payload length
     encoded_string += int(128).to_bytes(1, byteorder="big")
     encoded_string += int(4).to_bytes(1, byteorder="big")
     return encoded_string
 
 
+# pads ASCII string with trailing null bytes to exactly 32 bytes
 def padded_byte_string(input):
+    """Pad string to 32-byte null-terminated field.
+
+    in:  input string
+    out: exactly 32 bytes padded with null bytes
+    """
     encoded_string = input.encode("ascii")
     encoded_string += b"\x00" * (32 - len(encoded_string))
     return encoded_string

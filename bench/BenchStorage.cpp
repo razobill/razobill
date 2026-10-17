@@ -1,35 +1,10 @@
-// ==============================================================================
-// Razobill Storage Compaction & Query Latency Benchmark (DuckDB ADBC Engine)
-// ==============================================================================
+// =============================================================================
+// DuckDB storage compaction and analytical query latency benchmark
 //
-// WHY THIS BENCHMARK EXISTS:
-// In the log management industry, vendors claim "10x compression!" by running
-// gzip-9 on static text files and ignoring that you can no longer query them.
-// Anyone can compress data if they don't care about querying it; the real engineering
-// challenge is *queryable columnar compaction*.
-//
-// This benchmark measures the physical disk footprint and vectorized query latency
-// inside an actual analytical database engine (DuckDB) at its default 256 KiB
-// storage block size.
-//
-// WHAT WE TEST:
-// 1. Raw Storage (`logs_raw`):
-//    Standard unstructured VARCHAR message column stored with DuckDB's default
-//    dictionary/FSST string compression.
-// 2. Additive Layout (`logs_additive`):
-//    Preserves the raw string, but appends a 64-bit `form_id` hash for fast filtering.
-// 3. Compact Decomposed Layout (`logs_compact`):
-//    The Razobill decomposed columnar schema:
-//    - `form_no`: 16-bit / 32-bit integer referencing the form dictionary
-//    - `i0..i3`: First 4 extracted integer variables as raw 64-bit integers (BitPacked)
-//    - `s0..s3`: First 4 extracted string variables as dictionary pools
-//    - `oi, os`: Overflow arrays for high-variable anomalies
-//
-// HARD PHYSICAL METRICS:
-// We force a WAL checkpoint (`CHECKPOINT`) and query `pragma_database_size()` to read
-// exact physical bytes written to NVMe storage: (used_blocks * block_size).
-// No synthetic math, no marketing fluff—real on-disk filesystem bytes.
-// ==============================================================================
+// measures physical database file footprints (pragma_database_size) across raw,
+// additive, and decomposed schemas, and evaluates vectorized query latencies
+// ~ physical on-disk filesystem bytes and vectorized query latencies
+// =============================================================================
 
 #include <algorithm>
 #include <chrono>
@@ -46,12 +21,21 @@
 using namespace razobill;
 namespace fs = std::filesystem;
 
-// High-resolution clock helper for benchmarking query execution slices
+/**
+ * Reads steady clock timestamp in seconds.
+ *
+ * out: current timestamp in fractional seconds
+ */
 static double timestampNow() {
     return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 
-// Opens an isolated, clean DuckDB database on disk for footprint measurements
+/**
+ * Opens an isolated on-disk DuckDB database via ADBC.
+ *
+ * in: path is file path to target database
+ * out: initialized Backend instance
+ */
 static std::unique_ptr<Backend> openDatabaseFile(const std::string& path) {
     auto options = support::duckdbOptions();
     fs::remove(path);
@@ -60,7 +44,12 @@ static std::unique_ptr<Backend> openDatabaseFile(const std::string& path) {
     return makeAdbcBackend(options);
 }
 
-// Queries DuckDB metadata to determine exact physical disk bytes committed
+/**
+ * Reads exact committed physical database bytes from DuckDB metadata.
+ *
+ * in: backend is active DuckDB backend
+ * out: total committed bytes (used_blocks * block_size)
+ */
 static std::int64_t measureDatabaseBytes(Backend& backend) {
     backend.exec("CHECKPOINT");
     const auto table =
@@ -68,13 +57,26 @@ static std::int64_t measureDatabaseBytes(Backend& backend) {
     return table.i64(0, 0);
 }
 
-// Statistical median helper: isolates jitter from OS background page writes
+/**
+ * Calculates statistical median from a vector of floating-point values.
+ *
+ * in: values list of measurement samples
+ * out: median value or 0.0 if empty
+ */
 static double computeMedian(std::vector<double> values) {
     if (values.empty()) return 0.0;
     std::sort(values.begin(), values.end());
     return values[values.size() / 2];
 }
 
+/**
+ * Entry point for DuckDB storage compaction and query latency benchmarks.
+ *
+ * inv: decomposed compaction must pass byte-for-bit lossless verification
+ * in: argv[1] optional path to corpus parquet file
+ * out: prints physical disk footprints and query execution timings to stdout
+ * err: returns 1 on verification failure, 0 on success
+ */
 int main(int argc, char** argv) {
     const char* corpusParquet = argc > 1 ? argv[1] : "/tmp/corpus.parquet";
     if (!fs::exists(corpusParquet)) {
@@ -122,7 +124,8 @@ int main(int argc, char** argv) {
             engine.compact("src");
             compactLoadSeconds = timestampNow() - t0;
 
-            // Invariant check: verify that every single reconstructed log matches bit-for-bit
+            // Invariant check: verify that every single reconstructed log
+            // matches bit-for-bit
             if (engine.verify("src") != 0) {
                 std::puts("[BENCH] CRITICAL ERROR: VERIFY FAILED! Invertibility violated.");
                 return 1;
@@ -160,9 +163,9 @@ int main(int argc, char** argv) {
     std::printf("Ingestion: Additive Refresh %.2fs  |  Compact Decompose %.2fs (134,815 rows)\n", additiveLoadSeconds,
                 compactLoadSeconds);
 
-    // ==========================================================================
+    // =========================================================================
     // Query Execution Latency Audit (Replicated 8x = ~1.08 Million Rows)
-    // ==========================================================================
+    // =========================================================================
     std::printf("\n========================================================================================\n");
     std::printf("VECTORIZED SQL QUERY LATENCY AUDIT (1.08 MILLION ROWS, SINGLE CPU CORE)\n");
     std::printf("========================================================================================\n");

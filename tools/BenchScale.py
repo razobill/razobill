@@ -1,21 +1,11 @@
 #!/usr/bin/env python3
-"""
-High-Scale Multi-Core Stress Test & Invertibility Audit for librazobill / pyrazobill
-====================================================================================
-
-THE CRUCIBLE TEST:
-Many parsers brag about their throughput on 2,000 hand-picked synthetic rows in a toy notebook.
-Here we throw 4,861 real-world chaotic production log files (69.6 million events, 6.82 GB)
-at librazobill across all hardware threads simultaneously without the Python GIL.
-
-TROLL:
-Mismatches allowed: EXACTLY ZERO.
-Memory leaks allowed: EXACTLY ZERO.
-Excuses accepted: NONE.
-
-If even 1 single byte out of 6.82 Gigabytes fails to reconstruct byte-for-byte,
-we consider the run a catastrophic failure.
-"""
+# =============================================================================
+# multi-core scale and invertibility stress test across production log corpora
+#
+# evaluates parallel decomposition throughput, memory footprint, and exact
+# byte-level invertibility across full logs/ corpus via auditParallel
+# ~ بنرمي عليه كل الملفات دفعة واحدة عشان نتأكد إن مفيش بايت واحد بيسقط
+# =============================================================================
 
 import os
 import sys
@@ -31,6 +21,7 @@ import pyrazobill
 
 
 def main():
+    """stream production logs in batches through parallel invertibility audit."""
     root = Path(__file__).resolve().parent.parent
     logs_dir = root / "logs"
     if not logs_dir.exists():

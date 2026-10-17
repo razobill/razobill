@@ -1,8 +1,11 @@
-"""
-VerifyMarkdownLinks.py
-Validates every internal relative link in all markdown documentation files,
-correctly ignoring code blocks and inline code.
-"""
+#!/usr/bin/env python3
+# =============================================================================
+# internal relative documentation link validator
+#
+# validates every internal relative markdown link across the repository,
+# ignoring fenced code blocks and inline code literals
+# ~ بيتأكد إن مفيش رابط داخلي في ملفات الماركداون بيودي على الفراغ
+# =============================================================================
 
 import re
 import pathlib
@@ -10,6 +13,11 @@ import sys
 
 
 def strip_code_blocks(text):
+    """strip fenced code blocks and inline code to isolate prose markdown links.
+
+    in: text is raw markdown string
+    out: string with code fences and backticked spans removed
+    """
     # Remove fenced code blocks ``` ... ```
     text = re.sub(r"```[\s\S]*?```", "", text)
     # Remove inline code ` ... `
@@ -18,6 +26,11 @@ def strip_code_blocks(text):
 
 
 def verify_links():
+    """validate all relative markdown links against filesystem targets.
+
+    inv: does not modify any markdown files on disk
+    out: True if all relative links resolve to existing files, False otherwise
+    """
     root = pathlib.Path(__file__).resolve().parent.parent
     md_files = list(root.rglob("*.md"))
     broken = []

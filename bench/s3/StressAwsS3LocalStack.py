@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
-"""
-StressAwsS3LocalStack.py - High-Throughput Stress Test Suite on AWS LocalStack
-=============================================================================
-
-Executes a heavy-duty stress test against AWS S3 / LocalStack emulator:
-1. Generates 100,000+ realistic enterprise telemetry events across 6 services.
-2. Streams columnar Parquet partitions to S3 with ZSTD compression.
-3. Benchmarks concurrent in-S3 analytical queries over the S3 wire.
-4. Performs bit-level lossless reconstruction verification under heavy load.
-"""
+# =============================================================================
+# high-throughput stress test suite on AWS S3 / LocalStack emulator
+#
+# streams partitioned columnar Parquet (100k+ events) across 6 services,
+# tests concurrent in-S3 query scans, and audits bit-level reconstruction
+# ~ اختبار إجهاد شديد بيبعت 100 ألف سجل لـ S3 ويتأكد إن مفيش خطأ واحد
+# =============================================================================
 
 import sys
 import os
@@ -35,6 +32,11 @@ from TestAwsS3Export import parseRazobill, reconstructRazobill
 
 
 def generateStressDataset(count: int = 100000):
+    """generate synthetic multi-service stress dataset across 6 service types.
+
+    in: count is number of events to synthesize
+    out: list of (eid, service_name, raw_message) tuples
+    """
     services = ["auth", "gateway", "storage", "compute", "database", "k8s"]
     templates = {
         "auth": "2026-10-07 14:{min:02d}:{sec:02d} [WARN] Failed authentication for user usr_{uid} from 192.168.1.{ip} port {port} attempt={attempt}",
@@ -120,6 +122,13 @@ def runStressTest(
     endpoint: str = None,
     bucket: str = "telemetry",
 ):
+    """stream partitioned Parquet to S3 and verify queries and invertibility.
+
+    inv: bit-level lossless reconstruction must hold with zero mismatches
+    in: total_events >= 1; endpoint/bucket S3 target configuration
+    out: True on successful completion with zero mismatches
+    err: raises AssertionError if any reconstructed event differs from input
+    """
     if threads is None or threads <= 0:
         threads = os.cpu_count() or 4
 

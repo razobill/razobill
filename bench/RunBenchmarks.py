@@ -1,18 +1,11 @@
 #!/usr/bin/env python3
-"""
-Razobill Phase 3 Performance Benchmark & Profiling Suite
-========================================================
-
-Protocol Specification (Atta 2026 / Razobill Engineering Rules):
-- Hardware & Platform: OS, CPU model, core topology, compiler, git commit.
-- Datasets: Verified against real Loghub datasets with SHA-256 hashes.
-- Single-Core Pinned Execution: Process affinity locked to Core 0 via psutil.
-- Cold vs Warm Execution: Measures initial cold load vs cache-warmed iterations.
-- Repeated Runs: 5 runs per configuration; records median, min, max, spread.
-- Multi-Core Scaling: 1, 2, 4, 6, 12 threads with linear speedup metrics.
-- Component Bottleneck Profiling: Breakdown of parse, formKey, reconstruct, C ABI.
-- Output: Committed as structured JSON in bench/results/benchmarks.json.
-"""
+# =============================================================================
+# end-to-end benchmark and profiling orchestration suite
+#
+# evaluates cold vs warm decomposition, pinned core latency, multi-threaded
+# scaling speedup, and native BenchCore execution across real Loghub datasets
+# ~ المايسترو اللي بيشغل كل الاختبارات المعيارية ويسجل النتائج في ملف جيسون
+# =============================================================================
 
 import os
 import sys
@@ -60,6 +53,7 @@ DATASETS = [
 
 
 def get_git_commit() -> str:
+    """read current git revision sha via git rev-parse."""
     try:
         res = subprocess.run(
             ["git", "rev-parse", "HEAD"],
@@ -74,6 +68,7 @@ def get_git_commit() -> str:
 
 
 def get_compiler_info() -> str:
+    """read host C++ compiler version string from gcc."""
     try:
         res = subprocess.run(
             ["gcc", "--version"],
@@ -87,6 +82,11 @@ def get_compiler_info() -> str:
 
 
 def hash_file(path: Path) -> tuple[str, int, int]:
+    """compute SHA-256 hash, byte count, and newline count of target file.
+
+    in: path points to readable file on disk
+    out: tuple of (sha256_hex, total_bytes, line_count)
+    """
     sha = hashlib.sha256()
     line_count = 0
     byte_count = 0
@@ -99,19 +99,25 @@ def hash_file(path: Path) -> tuple[str, int, int]:
 
 
 def pin_to_core(core_id: int = 0):
+    """pin current process execution to specified logical core ID."""
     if psutil:
         p = psutil.Process()
         p.cpu_affinity([core_id])
 
 
 def unpin_cores():
+    """reset process CPU affinity to all available logical cores."""
     if psutil:
         p = psutil.Process()
         p.cpu_affinity(list(range(psutil.cpu_count(logical=True))))
 
 
 def profile_component_breakdown(lines: list[str], runs: int = 5) -> dict:
-    """Profiles individual stages of the Razobill pipeline on Core 0."""
+    """profile individual stages of the Razobill pipeline on pinned core.
+
+    in: lines non-empty list of string log events; runs >= 1
+    out: dict of per-stage timing, throughput, and jitter spread metrics
+    """
     pin_to_core(0)
     total_bytes = sum(len(line) for line in lines)
     n = len(lines)
@@ -181,7 +187,11 @@ def profile_component_breakdown(lines: list[str], runs: int = 5) -> dict:
 
 
 def benchmark_multicore_scaling(lines: list[str], thread_counts: list[int], runs: int = 5) -> dict:
-    """Measures multi-core scaling efficiency using parallel chunks."""
+    """measure multi-core scaling efficiency using thread pools across chunks.
+
+    in: lines log corpus lines; thread_counts list of thread pool sizes
+    out: dict mapping thread count keys to throughput and speedup stats
+    """
     unpin_cores()
     scaling_results = {}
     baseline_throughput = 0.0
@@ -230,7 +240,12 @@ def benchmark_multicore_scaling(lines: list[str], thread_counts: list[int], runs
 
 
 def run_benchcore_executable(corpus_path: str, max_lines: int) -> str:
-    """Executes native compiled BenchCore binary."""
+    """execute native compiled BenchCore binary and capture stdout output.
+
+    in: corpus_path path to input log file; max_lines line cap
+    out: stdout string from BenchCore execution
+    err: raises FileNotFoundError if binary missing, RuntimeError on failure
+    """
     exe_name = "BenchCore.exe" if os.name == "nt" else "BenchCore"
     bench_exe = REPO_ROOT / "build" / exe_name
     if not bench_exe.exists():
@@ -255,6 +270,11 @@ def run_benchcore_executable(corpus_path: str, max_lines: int) -> str:
 
 
 def parse_benchcore_output(stdout: str) -> dict:
+    """parse tabular throughput and latency metrics from BenchCore stdout.
+
+    in: stdout string output produced by BenchCore
+    out: dict structured with single-core ops and parallel scaling metrics
+    """
     import re
 
     metrics = {
@@ -290,6 +310,7 @@ def parse_benchcore_output(stdout: str) -> dict:
 
 
 def main():
+    """execute benchmark suite across datasets and emit benchmarks.json."""
     print("=" * 80)
     print("RAZOBILL PHASE 3 PERFORMANCE AUDIT & PROFILE SUITE")
     print("=" * 80)

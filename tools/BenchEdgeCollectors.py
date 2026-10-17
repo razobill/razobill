@@ -1,18 +1,11 @@
 #!/usr/bin/env python3
-"""
-BenchEdgeCollectors.py - Edge Telemetry Collector Benchmark (OpenTelemetry & Vector)
-===================================================================================
-
-Simulates edge forwarder / agent pipelines (Vector, OpenTelemetry Collector):
-1. Ingests raw container & application logs at the host boundary.
-2. Applies librazobill decomposition (formKey, ints, strs) via pyrazobill.
-3. Measures nanosecond latency per log record (p50, p90, p99, p99.9).
-4. Measures wire egress payload reduction:
-   - Raw string wire bytes
-   - Razobill decomposed wire bytes (formKey + packed ints + string pool)
-   - Wire compression efficiency (Zstandard / Snappy)
-5. Verifies 100.000% byte-for-byte exact invertibility (reconstruct(parse(m)) == m).
-"""
+# =============================================================================
+# edge telemetry forwarder compaction benchmark (OpenTelemetry and Vector)
+#
+# simulates in-flight edge decomposition, nanosecond per-record latency (p50,
+# p99), wire egress compression, and byte-for-byte exact invertibility
+# ~ بنحاكي دور مجمع السجلات على الأجهزة الطرفية قبل ما يبعت على الشبكة
+# =============================================================================
 
 import sys
 import time
@@ -27,6 +20,12 @@ import pyrazobill
 
 
 def runEdgeCollectorBenchmark(logPath: str, maxEvents: int = 50000):
+    """measure latency, wire reduction, and lossless invertibility on log file.
+
+    inv: every processed record must reconstruct identically via RzJoin
+    in: logPath is path to readable text log file; maxEvents > 0
+    out: dict of benchmark metrics or None if file missing or empty
+    """
     path = Path(logPath)
     if not path.exists():
         print(f"[EDGE BENCH] File {logPath} does not exist.")
@@ -85,7 +84,8 @@ def runEdgeCollectorBenchmark(logPath: str, maxEvents: int = 50000):
     print(f"  - Tail Latency  (p99.9):{p999Us:>10.2f} microseconds")
 
     # 2. Wire Egress Size Calculation
-    # Packed representation: formKey UTF-8 + 8 bytes per integer + UTF-8 string literals
+    # Packed representation: formKey UTF-8 + 8 bytes per integer +
+    # UTF-8 string literals
     rawWireGzip = len(zlib.compress("\n".join(lines).encode("utf-8"), 6))
 
     # Razobill wire representation
@@ -107,7 +107,8 @@ def runEdgeCollectorBenchmark(logPath: str, maxEvents: int = 50000):
     import struct
     import duckdb
 
-    # Columnar bytes measurement via Parquet ZSTD (standard Vector / OTel S3 sink codec)
+    # Columnar bytes measurement via Parquet ZSTD
+    # (standard Vector / OTel S3 sink codec)
     con = duckdb.connect()
     con.execute("CREATE TABLE edge_stream (form VARCHAR, ints BIGINT[], strs VARCHAR[]);")
     con.executemany("INSERT INTO edge_stream VALUES (?, ?, ?);", decomposedRecords)
@@ -117,7 +118,8 @@ def runEdgeCollectorBenchmark(logPath: str, maxEvents: int = 50000):
     con.execute(f"COPY edge_stream TO '{pqFile.as_posix()}' (FORMAT PARQUET, COMPRESSION ZSTD);")
     razobillParquetBytes = pqFile.stat().st_size
 
-    # Also compute packed binary bytes (form dictionary + packed ints + string views)
+    # Also compute packed binary bytes
+    # (form dictionary + packed ints + string views)
     packedIntBytes = b"".join(struct.pack("<q", int(i)) for r in decomposedRecords for i in r[1])
     columnarBlob = (
         "".join(r[0] for r in decomposedRecords).encode("utf-8")

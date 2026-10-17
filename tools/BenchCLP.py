@@ -1,19 +1,11 @@
 #!/usr/bin/env python3
-"""
-tools/BenchCLP.py - Comprehensive Head-to-Head Benchmark: Razobill vs CLP (YScope, OSDI 2021).
-=============================================================================================
-
-Evaluates Razobill (in-database relational decomposition) and YScope CLP (Compressed
-Log Processor IR) using both clp-ffi-py and clp-logging across:
-1. Ingestion throughput (RzSplit per-line, RzSplitMany batch, CLP FourByteSerializer).
-2. Physical storage footprint & compression (Raw text, Raw Zstd, CLP Raw IR, CLP Zstd IR,
-   Razobill Parquet Zstd, and Razobill DuckDB on-disk storage).
-3. Lossless roundtrip fidelity (100.0% exact bit matching across normal logs and edge cases).
-4. Reconstruction & decoding throughput (RzJoin, Parquet+RzJoin, CLP IR Raw Decode, CLP IR Zstd Decode).
-5. Search & query analytics (Wildcard needle search and top-10 template group-by aggregation).
-6. Python standard logging integration (logging.FileHandler, clp_logging.handlers.CLPFileHandler,
-   RazobillLoggingHandler).
-"""
+# =============================================================================
+# head-to-head benchmark harness: Razobill vs YScope CLP (OSDI 2021)
+#
+# benchmarks ingestion throughput, compression ratio, lossless reconstruction,
+# decoding throughput, search/aggregation query latency, and logging handlers
+# ~ مقارنة مباشرة مع clp عشان نشوف مين بيكسب في إيه وبأرقام موثقة
+# =============================================================================
 
 import argparse
 import datetime
@@ -605,7 +597,8 @@ class ClpRazobillBenchmark:
             },
         }
 
-    # 6. Python Logging Handlers Benchmark (clp-logging vs Razobill vs FileHandler)
+    # 6. Python logging handlers benchmark
+    # (clp-logging vs Razobill vs FileHandler)
     def bench_logging_handlers(self, num_events: int = 50000) -> Dict[str, Any]:
         synthetic_records = [
             f"User test-user-{i % 500} authenticated from 192.168.1.{i % 254} port {1024 + (i % 60000)} status=OK"

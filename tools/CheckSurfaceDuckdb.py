@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""
-tools/CheckSurfaceDuckdb.py: CI surface budget and banned-term checker for DuckDB extension.
-Enforces hard caps:
-- SQL: at most 4 functions, 0 aliases.
-- Zero banned terms in public SQL extension surface.
-"""
+# =============================================================================
+# surface budget enforcer: DuckDB loadable C extension (DuckdbExtension.cpp)
+#
+# enforces hard limits: <= 4 registered SQL functions, 0 legacy aliases,
+# and zero banned terms in the DuckDB extension public surface
+# ~ مفيش أكتر من أربع دوال، وممنوع أي اسم قديم يتسرب للدك دي بي
+# =============================================================================
 
+import re
 import sys
 from pathlib import Path
 
@@ -30,6 +32,11 @@ BANNED_TERMS = [
 
 
 def main():
+    """audit DuckDB extension registered functions and banned terms.
+
+    inv: DuckDB extension exports <= 4 functions, 0 aliases, 0 banned terms
+    err: exits with status code 1 on budget or banned term failure
+    """
     root_dir = Path(__file__).resolve().parent.parent
     ext_file = root_dir / "ext" / "duckdb" / "DuckdbExtension.cpp"
 
@@ -38,9 +45,6 @@ def main():
         sys.exit(1)
 
     content = ext_file.read_text(encoding="utf-8")
-
-    # Inspect registered function names in DUCKDB_EXTENSION_ENTRYPOINT
-    import re
 
     # Match FunctionSet <var>("Name")
     fn_matches = re.findall(r'FunctionSet\s+\w+\(\s*"([^"]+)"\s*\);', content)
@@ -87,12 +91,13 @@ def main():
 
     # Check for banned terms in comments or error strings
     for term in BANNED_TERMS:
-        # Check if term appears in error strings or comments outside of include/internal core references
-        # Let's search lines
+        # Check if term appears in error strings or comments outside of
+        # include/internal core references
         for lineno, line in enumerate(content.splitlines(), start=1):
             lower_line = line.lower()
             if term in lower_line:
-                # ignore internal includes and internal C++ Status::SlotUnderflow/SlotOverflow enum / core types
+                # ignore internal includes and internal C++
+                # Status::SlotUnderflow/SlotOverflow enum / core types
                 if (
                     "#include" in line
                     or "slotunderflow" in lower_line

@@ -1,17 +1,11 @@
 #!/usr/bin/env python3
-"""
-tools/BenchDrain.py - Comprehensive Head-to-Head Benchmark: Razobill vs Drain3 (He et al., ICWS 2017).
-=====================================================================================================
-
-A fair, transparent, and rigorous empirical comparison between Razobill and Drain3 covering:
-1. Single-threaded throughput and latency percentiles (min, p50, p90, p99, max).
-2. Streaming stability and throughput degradation over 100,000 events.
-3. Grouping accuracy (GA) versus lossless reconstructibility trade-off.
-4. Lossless invertibility audit (exact string match verification).
-5. Multi-threaded scaling (1, 2, 4, 8, N threads via GIL-free RzSplitMany).
-6. Adversarial edge cases (escaped quotes, trailing backslashes, leading zeros, Unicode).
-7. Memory footprint and garbage collection overhead.
-"""
+# =============================================================================
+# empirical benchmark harness: Razobill vs Drain3 (He et al., ICWS 2017)
+#
+# benchmarks single-threaded latency percentiles, multi-threaded scaling,
+# streaming stability, and grouping accuracy vs lossless invertibility
+# ~ درين بيخمن قوالب بالتقريب، رازوبيل بيقسم بصرامة بدون أي فقدان
+# =============================================================================
 
 import argparse
 import json

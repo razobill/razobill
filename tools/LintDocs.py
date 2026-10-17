@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""
-tools/LintDocs.py - Automated style, structure, and glossary linter for Razobill docs.
-Derived directly from docs/STYLE.md.
-"""
+# =============================================================================
+# documentation style, structure, and glossary linter
+#
+# validates Markdown files against docs/STYLE.md: untagged code blocks,
+# marketing hype words, deprecated symbols, sentence-case headings, and length
+# ~ المراقب اللغوي اللي بيطرد كلام الماركتنج المبتذل من التوثيق
+# =============================================================================
 
 import sys
 import re
@@ -51,6 +54,12 @@ DEPRECATION_ALLOWLIST = {
 
 
 def lint_file(file_path: Path) -> list:
+    """audit a markdown file against docs/STYLE.md rules.
+
+    inv: checks do not mutate file contents
+    in: file_path points to an existing readable markdown file
+    out: list of violation strings, empty if file complies
+    """
     errors = []
     text = file_path.read_text(encoding="utf-8", errors="replace")
     lines = text.splitlines()
@@ -72,7 +81,8 @@ def lint_file(file_path: Path) -> list:
     for pat, msg in BANNED_WORDS.items():
         for i, line in enumerate(lines, 1):
             if re.search(pat, line, re.IGNORECASE):
-                # ignore if inside markdown rules quoting the word itself or historical changelog
+                # ignore if inside markdown rules quoting the word itself
+                # or historical changelog
                 if any(k in rel_path for k in ["STYLE.md", "LintDocs.py", "CONTRIBUTING.md", "CHANGELOG.md"]):
                     continue
                 errors.append(f"{rel_path}:{i} Banned word detected ({pat}): {msg}")
@@ -148,7 +158,8 @@ def lint_file(file_path: Path) -> list:
             clean_heading = re.sub(r"`[^`]*`", "", clean_heading).strip()
             words = clean_heading.split()
             if len(words) > 1:
-                # Check for Title Case where small words or non-initial words are capitalized
+                # Check for Title Case where small words or non-initial
+                # words are capitalized
                 capitalized_non_first = 0
                 for w in words[1:]:
                     clean_w = re.sub(r"[^\w+]", "", w)
@@ -185,6 +196,10 @@ def lint_file(file_path: Path) -> list:
 
 
 def main():
+    """run documentation style linter across paths from argv or defaults.
+
+    err: exits with status code 1 if any style errors are detected
+    """
     paths = sys.argv[1:] if len(sys.argv) > 1 else ["README.md", "docs/STYLE.md"]
     total_errors = []
     for p_str in paths:

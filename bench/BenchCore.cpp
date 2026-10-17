@@ -1,25 +1,10 @@
-// ==============================================================================
-// Razobill Data-Plane Micro-Benchmark: Single-Core Throughput & Nanosecond Audit
-// ==============================================================================
+// =============================================================================
+// single-core data-plane throughput and latency microbenchmark
 //
-// WHY THIS BENCHMARK EXISTS:
-// Measures the raw, unfiltered scalar throughput of the C++20 data plane,
-// the Universal C ABI (RzDecompose, RzReconstructSlots), and hardware SIMD scanners
-// on a single CPU core without locks or thread-pool queues.
-//
-// WHAT WE MEASURE:
-// 1. C++20 parse (form + slots)
-// 2. C++20 parse + formKey serialization
-// 3. C++20 parse + formKey + XXH64 hash
-// 4. C++20 parse + round-trip reconstruct (lossless verify)
-// 5. Universal C ABI RzParse
-// 6. Universal C ABI RzDecompose (zero-copy tuple extraction)
-// 7. Universal C ABI RzReconstruct
-// 8. Universal C ABI RzReconstructSlots (direct slot arrays)
-// 9. Hardware SIMD findWhitespace (AVX2 / ARM NEON multi-dispatcher)
-// 10. Scalar delimiter search baseline
-// 11. XXH64 raw message hash baseline
-// ==============================================================================
+// measures scalar parser throughput, form key generation, lossless round-trip,
+// Universal C ABI overhead, SIMD scanning speed, and multi-core thread scaling
+// ~ single-core scalar throughput against raw logs without locks or thread pool
+// =============================================================================
 
 #include <algorithm>
 #include <atomic>
@@ -38,6 +23,14 @@
 #include "librazobill/Slots.hpp"
 #include "librazobill/ThreadPool.hpp"
 
+/**
+ * Entry point for Razobill single-core and multi-core throughput benchmarks.
+ *
+ * inv: measures uncorrupted input records; does not alter input files
+ * in: argv[1] optional path to log corpus; argv[2] optional line limit
+ * out: prints formatted tabular throughput and latency metrics to stdout
+ * err: returns 1 on missing or unreadable corpus file, 0 on success
+ */
 int main(int argc, char** argv) {
     std::string path;
     std::size_t maxLines = 50000;

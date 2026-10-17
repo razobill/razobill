@@ -1,21 +1,11 @@
 #!/usr/bin/env python3
-"""
-BenchDrain3VsRazobillS3.py - Head-to-Head Multi-Threaded Benchmark: Drain3 vs Razobill on AWS S3
-================================================================================================
-
-Empirically evaluates Drain3 (He et al., ICWS 2017) vs Razobill on AWS S3:
-1. Multi-Threaded Ingestion & Parsing Throughput:
-   - Drain3 (single-threaded heuristic prefix tree).
-   - Razobill Python Single-Thread vs Multi-Threaded Batch (`concurrent.futures.ThreadPoolExecutor`).
-   - Razobill Native Multi-Core C++20 SIMD (`pyrazobill.auditParallel`).
-2. Physical S3 Storage Compaction (Raw vs Drain3 Parquet vs Razobill Parquet).
-3. Concurrent In-S3 Analytical Query Scans (Single-client vs Multi-client throughput).
-4. Information Preservation & Invertibility (Lossy wildcard <*> vs Lossless exact reconstruction).
-5. Comprehensive Cloud Economics:
-   - S3 Storage Savings (92.2% - 93.8% reduction).
-   - Ingestion Compute Savings (AWS Lambda / Fargate vCPU-duration reduced by 60% - 90%).
-   - Total Cost Savings at 1 TB/month and 30 TB/month scale.
-"""
+# =============================================================================
+# multi-threaded Drain3 vs Razobill benchmark on AWS S3 storage
+#
+# evaluates parsing throughput, S3 Parquet compaction, query scan latency,
+# exact invertibility vs lossy wildcards, and dual-tier cloud cost economics
+# ~ درين 3 بيضيع المتغيرات مع النجوم وعايز خيط واحد، رازو بيل بيحفظ كل بايت
+# =============================================================================
 
 import sys
 import os
@@ -59,6 +49,11 @@ except ImportError:
 
 
 def generateBenchmarkCorpus(count: int = 25000):
+    """generate synthetic heterogeneous log corpus across 6 service types.
+
+    in: count is number of log events to generate
+    out: list of formatted string log events
+    """
     templates = [
         (
             "auth",
@@ -132,6 +127,12 @@ def runHeadToHeadBenchmark(
     endpoint: str = None,
     bucket: str = "telemetry",
 ):
+    """run head-to-head multi-threaded Drain3 vs Razobill benchmark on S3.
+
+    inv: Razobill exact reconstruction must achieve zero bit-level mismatches
+    in: count >= 1; threads worker thread count; endpoint/bucket S3 targets
+    out: True on successful completion with zero Razobill mismatches
+    """
     if threads is None or threads <= 0:
         threads = os.cpu_count() or 4
 
@@ -220,7 +221,8 @@ def runHeadToHeadBenchmark(
         print(f"    - Distinct Clusters Mined: {len(drain_clusters)}")
 
         # ---------------------------------------------------------------------
-        # 2. Pipeline B: Razobill Decomposition (Single vs Multi-Threaded vs C++ Core)
+        # 2. Pipeline B: Razobill Decomposition
+        # (Single vs Multi-Threaded vs C++ Core)
         # ---------------------------------------------------------------------
         print(f"\n[Phase 2] Executing Razobill Vectorized Decomposition Pipeline ({threads} Threads)...")
 
@@ -236,7 +238,8 @@ def runHeadToHeadBenchmark(
             t_rb_1t = time.perf_counter() - t0
             rb_tput_1t = count / t_rb_1t if t_rb_1t > 0 else 0
 
-        # 2B. Multi-threaded Python batch (concurrent ThreadPoolExecutor releasing GIL)
+        # 2B. Multi-threaded Python batch
+        # (concurrent ThreadPoolExecutor releasing GIL)
         t0 = time.perf_counter()
         if HAS_PYRAZOBILL and threads > 1:
             chunk_size = (count + threads - 1) // threads
@@ -389,7 +392,8 @@ def runHeadToHeadBenchmark(
         # ---------------------------------------------------------------------
         s3_rate = 0.023
         athena_rate = 5.00
-        # AWS Lambda / Fargate vCPU-duration rate: $0.0000166667 per GB-second / ~$0.040 per vCPU-hour
+        # AWS Lambda / Fargate vCPU-duration rate:
+        # $0.0000166667 per GB-second / ~$0.040 per vCPU-hour
         compute_hour_rate = 0.040
 
         # Tier A: 1 TB / Month

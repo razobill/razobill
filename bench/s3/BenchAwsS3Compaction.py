@@ -1,16 +1,11 @@
 #!/usr/bin/env python3
-"""
-BenchAwsS3Compaction.py - AWS S3 Parquet Compaction & Query Scan Benchmark
-=============================================================================
-
-Measures:
-1. Physical Storage Compaction on S3 (Raw Text vs. Raw Parquet vs. Razobill Columnar Parquet).
-2. Wire Transfer & Stream Put Latency over S3.
-3. In-S3 Analytical Query Scan Latency (Full-text scan vs. Columnar Predicate Pushdown).
-4. Dual-Tier Cloud Economics:
-   - Tier A: Common 1 TB/month scale ($1,346/mo savings).
-   - Tier B: Enterprise 30 TB/month scale ($40,262/mo savings).
-"""
+# =============================================================================
+# AWS S3 Parquet columnar compaction and query scan benchmark
+#
+# measures S3 storage compaction (raw text vs raw Parquet vs Razobill Parquet),
+# wire stream put latency, in-S3 query scans, and cloud cost economics
+# ~ بنقيس تكلفة التخزين السحابي على S3 وسرعة استعلام الباركيه عبر الشبكة
+# =============================================================================
 
 import sys
 import os
@@ -38,6 +33,11 @@ from TestAwsS3Export import parseRazobill, reconstructRazobill
 
 
 def generateCorpus(count: int = 50000):
+    """generate synthetic multi-tenant log corpus across common templates.
+
+    in: count is number of log events to generate
+    out: list of formatted log event strings
+    """
     templates = [
         (
             "auth",
@@ -114,6 +114,13 @@ def runS3CompactionBenchmark(
     endpoint: str = None,
     bucket: str = "telemetry",
 ):
+    """benchmark S3 Parquet upload size, scan latency, and invertibility.
+
+    inv: bit-level lossless reconstruction must hold for all evaluated rows
+    in: count >= 1; endpoint points to mock or live S3; bucket is S3 bucket
+    out: True on successful completion with zero invertibility errors
+    err: asserts zero mismatches; raises AssertionError if reconstruction fails
+    """
     if threads is None or threads <= 0:
         threads = os.cpu_count() or 4
 

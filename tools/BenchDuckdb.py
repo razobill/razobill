@@ -1,16 +1,11 @@
 #!/usr/bin/env python3
-"""
-High-Scale DuckDB SQL Integration Benchmark for librazobill
-============================================================
-
-ARCHITECTURE:
-Vectorized scalar extension execution in DuckDB.
-Demonstrates:
-1. Dynamic loading of `razobill.duckdb_extension` (via RZB_EXT or build paths).
-2. Multi-threaded SQL parsing with `RzSplit`.
-3. 100% Lossless SQL reconstruction with `RzJoin`.
-4. High-throughput parsing of 1,000,000 rows inside SQL.
-"""
+# =============================================================================
+# high-scale DuckDB SQL extension integration benchmark
+#
+# benchmarks multi-threaded RzSplit and RzJoin vectorized execution over
+# 1,000,000 synthetic log records directly inside DuckDB query engine
+# ~ بنقيس أداء الامتداد جوه دك دي بي على مليون سطر عشان نتأكد من السرعة
+# =============================================================================
 
 import os
 import sys

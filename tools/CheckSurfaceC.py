@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""
-Surface Budget Enforcer: Razobill C Universal ABI Header (RazobillC.h)
-Enforces hard caps: <= 7 functions, <= 3 types in include/librazobill/RazobillC.h.
-Unified CamelCase with Rz prefix. Zero legacy aliases. Zero banned words.
-"""
+# =============================================================================
+# surface budget enforcer: Razobill C Universal ABI (RazobillC.h)
+#
+# enforces hard limits: <= 7 exported functions, <= 3 types in RazobillC.h,
+# unified CamelCase Rz prefix, zero legacy aliases, and zero banned terms
+# ~ الحارس اللي بيمنع أي حد يزود دالة في الواجهة العامة من غير ما يحسب حسابها
+# =============================================================================
 
 import re
 import sys
@@ -29,6 +31,11 @@ BANNED_TERMS = [
 
 
 def main():
+    """audit C ABI header declarations against surface budget and banned terms.
+
+    inv: RazobillC.h exports <= 7 functions, <= 3 types, and 0 banned terms
+    err: exits with status code 1 on surface budget or banned term violation
+    """
     if not HEADER_PATH.exists():
         print(f"ERROR: Header not found at {HEADER_PATH}")
         sys.exit(1)

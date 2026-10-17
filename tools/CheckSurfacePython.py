@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""
-tools/CheckSurfacePython.py: CI surface budget and banned-term checker for pyrazobill.
-Enforces hard caps:
-- Python: at most 8 public names in __all__
-- Zero banned scientific terms in public docstrings or module docs.
-"""
+# =============================================================================
+# surface budget enforcer: pyrazobill Python package surface and docstrings
+#
+# enforces hard limits: <= 8 public symbols exported in __all__, and zero
+# banned scientific terms in public docstrings or module documentation
+# ~ بنعد الأسماء في __all__ عشان محدش يزود حاجات على الواجهة بدون ترخيص
+# =============================================================================
 
 import sys
 from pathlib import Path
@@ -34,6 +35,11 @@ BANNED_TERMS = [
 
 
 def main():
+    """audit pyrazobill __all__ export budget and docstring banned terms.
+
+    inv: pyrazobill exports <= 8 names, all defined, with 0 banned terms
+    err: exits with status code 1 on budget or banned term violation
+    """
     names = rz.__all__
     print("Python Public Surface Audit (pyrazobill):")
     print(f"  Names ({len(names)}/{MAX_NAMES}): {', '.join(names)}")

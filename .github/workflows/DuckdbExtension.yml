@@ -3,7 +3,7 @@
 #
 # builds RazobillDuckdb and executes integration test suite across Linux,
 # macOS, and Windows runners
-# ~ مسار تجميع إضافة دك دي بي وتشغيل اختبارات التكامل الخاصة بيها
+# ~ DuckDB extension build workflow and integration test execution
 # =============================================================================
 
 name: DuckDB Extension Build & Test

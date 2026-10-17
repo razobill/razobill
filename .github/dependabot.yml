@@ -2,7 +2,7 @@
 # GitHub Dependabot automated dependency update configuration
 #
 # manages weekly update schedules for GitHub Actions, Python pip, and submodules
-# ~ التحديث الآلي للمكتبات والأكشنز عشان منقعدش نحدث يدوي كل أسبوع
+# ~ automated weekly updates for actions, dependencies, and submodules
 # =============================================================================
 
 version: 2

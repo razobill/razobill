@@ -3,7 +3,7 @@
 #
 # builds and tests across Linux, macOS, and Windows with GCC, Clang, and MSVC;
 # runs Intel SDE AVX-512 emulation, differential fuzzing, and ABI stability
-# ~ خط الأنابيب الرئيسي اللي بيتأكد من سلامة البناء عبر كل المنصات والمعالجات
+# ~ primary pipeline verifying build integrity across platforms and targets
 # =============================================================================
 
 name: Continuous Integration

@@ -2,7 +2,7 @@
 # GitHub bug report issue form template
 #
 # structures bug submissions with version, component, and reproduction steps
-# ~ نموذج الإبلاغ عن الأخطاء مع طلب خطوات إعادة الإنتاج ومعلومات البيئة
+# ~ issue template requesting reproduction steps and environment details
 # =============================================================================
 
 name: Bug Report

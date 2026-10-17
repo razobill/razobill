@@ -2,7 +2,7 @@
 # GitHub Actions CodeQL security and vulnerability analysis workflow
 #
 # analyzes C++ and Python sources for vulnerabilities and security hot-spots
-# ~ الفحص الدوري للأمان على كود السي بلس بلس والبايثون
+# ~ periodic security scans for C++ and Python sources
 # =============================================================================
 
 name: CodeQL Security Analysis

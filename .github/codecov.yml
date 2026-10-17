@@ -2,7 +2,7 @@
 # Codecov test coverage gate and pull-request reporting configuration
 #
 # sets precision, project/patch pass thresholds, and path ignore lists
-# ~ إعدادات تقارير نسبة التغطية الاختبارية وتنبيهات طلبات السحب
+# ~ test coverage reporting and pull request status checks
 # =============================================================================
 
 codecov:

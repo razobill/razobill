@@ -2,7 +2,7 @@
 # GitHub Actions automated triage and metadata inspection for Dependabot PRs
 #
 # inspects SemVer update metadata and validates minor and patch updates
-# ~ مسار فحص وتصنيف طلبات سحب ديبيندابوت تلقائياً
+# ~ automated verification and triage for Dependabot pull requests
 # =============================================================================
 
 name: Dependabot Automation

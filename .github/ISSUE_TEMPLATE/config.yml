@@ -2,7 +2,7 @@
 # GitHub issue template chooser configuration
 #
 # disables blank issue creation and directs community discussions to forum
-# ~ بيقفل فتح البلاغات الفاضية وبيوجه الناس للمناقشات للاستفسارات العامة
+# ~ disables blank issues and directs community discussions to forum
 # =============================================================================
 
 blank_issues_enabled: false

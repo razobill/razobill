@@ -2,7 +2,6 @@
 # GitHub Actions workflow: Clang Lifetime Safety Analysis & Polonius Model
 #
 # verifies compile-time borrow safety, view lifetime bounding, and ownership
-# ~ حارس دورة حياة المؤشرات: بيكتشف المؤشرات المعلقة والافتراضات غير الآمنة في وقت الترجمة
 # =============================================================================
 
 name: Lifetime Safety Analysis

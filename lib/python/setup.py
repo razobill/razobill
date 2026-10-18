@@ -36,10 +36,10 @@ if (repoRoot / "src").exists() and (repoRoot / "include").exists():
         thirdpartyCore.mkdir(parents=True, exist_ok=True)
         if (repoRoot / "thirdparty" / "adbc").exists():
             shutil.copytree(repoRoot / "thirdparty" / "adbc", thirdpartyCore / "adbc", dirs_exist_ok=True)
-        if (repoRoot / "thirdparty" / "duckdbcapi").exists():
-            shutil.copytree(repoRoot / "thirdparty" / "duckdbcapi", thirdpartyCore / "duckdbcapi", dirs_exist_ok=True)
-    except Exception:
-        pass
+    except (OSError, shutil.Error) as exc:
+        # staging is best-effort when running in read-only or permission-restricted environments;
+        # fall back to direct monorepo source routing if staging cannot be created
+        sys.stderr.write(f"[pyrazobill] Note: Pre-staging core sources skipped: {exc}\n")
 
 if srcCore.exists() and includeCore.exists():
     sources = [

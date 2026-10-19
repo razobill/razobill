@@ -76,8 +76,6 @@ DuckDB and ClickHouse names and logos are used unaltered, only to identify compa
 project's trademark guidelines before changing how they appear. Fonts are Martian Mono and Hanken Grotesk
 (SIL Open Font License, via Fontsource).
 
-## Known notes
+## Security notes
 
-`npm audit` reports three low-severity advisories in KaTeX, pulled in by Mermaid. They apply to rendering
-untrusted input; here Mermaid runs only at build time on the repository's own diagrams, and nothing from it
-is shipped to visitors.
+KaTeX prototype pollution advisory (GHSA-238p-pmpm-9mq7), pulled in transitively by Mermaid, is patched via package overrides (`katex >= 0.18.2`). `npm audit` reports 0 vulnerabilities.

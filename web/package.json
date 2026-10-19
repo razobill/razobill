@@ -25,6 +25,9 @@
     "build": "astro build && pagefind --site dist --glob \"docs/**/*.html\"",
     "preview": "astro preview"
   },
+  "overrides": {
+    "katex": "^0.18.2"
+  },
   "engines": {
     "node": ">=22.22.0"
   }

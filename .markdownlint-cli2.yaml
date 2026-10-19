@@ -26,6 +26,9 @@ globs:
 
 ignores:
   - "node_modules/**"
+  - "**/node_modules/**"
+  - "web/dist/**"
+  - "web/.astro/**"
   - "build/**"
   - "thirdparty/**"
   - ".git/**"

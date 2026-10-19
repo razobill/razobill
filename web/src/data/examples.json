@@ -1,0 +1,164 @@
+{
+  "engine": {
+    "package": "pyrazobill",
+    "version": "1.1.2",
+    "native": true
+  },
+  "demo": [
+    {
+      "id": "ssh-login",
+      "label": "ssh login",
+      "raw": "Accepted publickey for ubuntu from 192.168.1.100 port 54322 ssh2",
+      "template": "Accepted publickey for {s} from {s} port {i} {s}",
+      "ints": [
+        54322
+      ],
+      "strs": [
+        "ubuntu",
+        "192.168.1.100",
+        "ssh2"
+      ],
+      "bytes": 64,
+      "hash": "15839925322490747116"
+    },
+    {
+      "id": "db-timeout",
+      "label": "db timeout",
+      "raw": "2026-10-07 14:02:11 [WARN] Connection to 10.0.0.1:5432 timed out after 3 retries",
+      "template": "{s} {i}:{s}:{i} [WARN] Connection to {s}:{i} timed out after {i} retries",
+      "ints": [
+        14,
+        11,
+        5432,
+        3
+      ],
+      "strs": [
+        "2026-10-07",
+        "02",
+        "10.0.0.1"
+      ],
+      "bytes": 80,
+      "hash": "4839174674919108564"
+    },
+    {
+      "id": "http-request",
+      "label": "http request",
+      "raw": "GET /api/v2/orders/8841 200 17ms user=maya",
+      "template": "GET /api/{s}/orders/{i} {i} {s} user={s}",
+      "ints": [
+        8841,
+        200
+      ],
+      "strs": [
+        "v2",
+        "17ms",
+        "maya"
+      ],
+      "bytes": 42,
+      "hash": "14586087902439385661"
+    },
+    {
+      "id": "worker-job",
+      "label": "worker job",
+      "raw": "2026-10-10 12:00:00 [INFO] Worker 42 finished job in 150ms",
+      "template": "{s} {i}:{s}:{s} [INFO] Worker {i} finished job in {s}",
+      "ints": [
+        12,
+        42
+      ],
+      "strs": [
+        "2026-10-10",
+        "00",
+        "00",
+        "150ms"
+      ],
+      "bytes": 58,
+      "hash": "12337719873068380174"
+    },
+    {
+      "id": "edge-cases",
+      "label": "edge cases",
+      "raw": "order 007 total 99999999999999999999 EUR ✅",
+      "template": "order {s} total {s} EUR ✅",
+      "ints": [],
+      "strs": [
+        "007",
+        "99999999999999999999"
+      ],
+      "bytes": 44,
+      "hash": "12690142909275772292"
+    }
+  ],
+  "cluster": [
+    {
+      "raw": "Accepted publickey for ubuntu from 192.168.1.100 port 54322 ssh2",
+      "template": "Accepted publickey for {s} from {s} port {i} {s}",
+      "ints": [
+        54322
+      ],
+      "strs": [
+        "ubuntu",
+        "192.168.1.100",
+        "ssh2"
+      ],
+      "bytes": 64,
+      "hash": "15839925322490747116"
+    },
+    {
+      "raw": "Accepted publickey for deploy from 10.0.4.12 port 40118 ssh2",
+      "template": "Accepted publickey for {s} from {s} port {i} {s}",
+      "ints": [
+        40118
+      ],
+      "strs": [
+        "deploy",
+        "10.0.4.12",
+        "ssh2"
+      ],
+      "bytes": 60,
+      "hash": "15839925322490747116"
+    },
+    {
+      "raw": "Accepted publickey for maya from 172.16.9.3 port 22871 ssh2",
+      "template": "Accepted publickey for {s} from {s} port {i} {s}",
+      "ints": [
+        22871
+      ],
+      "strs": [
+        "maya",
+        "172.16.9.3",
+        "ssh2"
+      ],
+      "bytes": 59,
+      "hash": "15839925322490747116"
+    },
+    {
+      "raw": "Accepted publickey for root from 192.168.1.100 port 33907 ssh2",
+      "template": "Accepted publickey for {s} from {s} port {i} {s}",
+      "ints": [
+        33907
+      ],
+      "strs": [
+        "root",
+        "192.168.1.100",
+        "ssh2"
+      ],
+      "bytes": 62,
+      "hash": "15839925322490747116"
+    },
+    {
+      "raw": "Accepted publickey for ubuntu from 10.0.0.8 port 61004 ssh2",
+      "template": "Accepted publickey for {s} from {s} port {i} {s}",
+      "ints": [
+        61004
+      ],
+      "strs": [
+        "ubuntu",
+        "10.0.0.8",
+        "ssh2"
+      ],
+      "bytes": 59,
+      "hash": "15839925322490747116"
+    }
+  ]
+}

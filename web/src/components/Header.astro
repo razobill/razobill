@@ -1,0 +1,28 @@
+---
+import Logo from './Logo.astro';
+import ThemeToggle from './ThemeToggle.astro';
+import Search from './Search.astro';
+import { REPO, url } from '../data/site';
+const home = url('');
+const links = [
+  { href: url('docs/'), label: 'Docs' },
+  { href: `${home}#numbers`, label: 'Benchmarks' },
+  { href: `${home}#compare`, label: 'Compare' },
+  { href: `${home}#works-with`, label: 'Works with' },
+  { href: `${home}#faq`, label: 'FAQ' },
+];
+const path = Astro.url.pathname;
+---
+<header class="site-header">
+  <div class="container bar">
+    <a class="brand" href={home} aria-label="Razobill, home"><Logo /></a>
+    <nav class="nav" aria-label="Main">
+      {links.map((l) => <a href={l.href} aria-current={l.label === 'Docs' && path.startsWith(url('docs/')) ? 'page' : undefined}>{l.label}</a>)}
+    </nav>
+    <div class="bar-end">
+      <Search />
+      <a class="nav-gh" href={REPO}>GitHub</a>
+      <ThemeToggle />
+    </div>
+  </div>
+</header>

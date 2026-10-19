@@ -1,0 +1,27 @@
+---
+import Logo from './Logo.astro';
+import { REPO, PYPI, PAPER, DUCKDB_EXT, version, url, buildDate } from '../data/site';
+const updated = buildDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+const cols = [
+  { h: 'Documentation', l: [['Getting started', url('docs/tutorials/getting-started/')], ['DuckDB guide', url('docs/how-to/duckdb/')], ['Python guide', url('docs/how-to/python/')], ['SQL functions', url('docs/reference/sql-functions/')], ['All docs', url('docs/')]] },
+  { h: 'Project', l: [['GitHub', REPO], ['PyPI', PYPI], ['DuckDB extension', DUCKDB_EXT], ['Changelog', `${REPO}/blob/main/CHANGELOG.md`], ['License', `${REPO}/blob/main/LICENSE`]] },
+  { h: 'Research', l: [['Latitude and Doubt (paper)', PAPER], ['Benchmarks', url('docs/explanation/benchmarks/')], ['Known limits', url('docs/explanation/limits/')], ['llms.txt', url('llms.txt')], ['Sitemap', url('sitemap.xml')]] },
+];
+---
+<footer class="site-footer">
+  <div class="container foot">
+    <div class="foot-brand">
+      <Logo variant="mark" class="foot-mark" />
+      <p class="small">Razobill {version}. Apache License 2.0.<br />Updated <time datetime={buildDate.toISOString().slice(0, 10)}>{updated}</time>.</p>
+    </div>
+    {cols.map((c) => (
+      <nav aria-label={c.h}>
+        <h2 class="foot-h">{c.h}</h2>
+        <ul>{c.l.map(([t, h]) => <li><a href={h}>{t}</a></li>)}</ul>
+      </nav>
+    ))}
+  </div>
+  <div class="container">
+    <div class="foot-legal"><p class="small">DuckDB and ClickHouse are trademarks of their respective owners. Their names and logos appear here only to identify compatible software.</p></div>
+  </div>
+</footer>

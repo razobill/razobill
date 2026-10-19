@@ -1,7 +1,8 @@
 # =============================================================================
-# GitHub Pages static interactive visualizer deployment workflow
+# GitHub Pages Astro static site and documentation deployment workflow
 #
-# publishes docs/web visualizer assets to GitHub Pages environment
+# builds web/ with Astro 7, renders Mermaid diagrams, generates Pagefind index,
+# and publishes web/dist to GitHub Pages environment
 # =============================================================================
 
 name: Deploy GitHub Pages
@@ -9,7 +10,9 @@ name: Deploy GitHub Pages
 on:
   push:
     branches: ["main"]
-    paths: ["docs/web/**", ".github/workflows/pages.yml"]
+    paths: ["web/**", "docs/**", "VERSION", ".github/workflows/pages.yml"]
+  pull_request:
+    paths: ["web/**", "docs/**", "VERSION", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:
@@ -18,20 +21,43 @@ permissions:
   id-token: write
 
 concurrency:
-  group: "pages"
-  cancel-in-progress: false
+  group: "pages-${{ github.ref }}"
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          check-latest: true
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Chromium (renders Mermaid diagrams at build time)
+        run: npx playwright install --with-deps chromium
+      - name: Build site and search index
+        run: npm run build
+      - uses: actions/configure-pages@v6
+        if: github.event_name != 'pull_request'
+      - uses: actions/upload-pages-artifact@v5
+        if: github.event_name != 'pull_request'
+        with:
+          path: web/dist
+
   deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/configure-pages@v6
-      - uses: actions/upload-pages-artifact@v5
-        with:
-          path: './docs/web'
       - id: deployment
         uses: actions/deploy-pages@v5

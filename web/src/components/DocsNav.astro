@@ -1,0 +1,14 @@
+---
+interface Item { id: string; title: string; href: string }
+interface Group { id: string; title: string; items: Item[] }
+interface Props { nav: Group[]; current?: string; label?: string }
+const { nav, current, label = 'Documentation sections' } = Astro.props;
+---
+<nav class="docs-nav" aria-label={label}>
+  {nav.map((g) => (
+    <div class="dn-group">
+      <h2 class="dn-h">{g.title}</h2>
+      <ul>{g.items.map((it) => <li><a href={it.href} aria-current={it.id === current ? 'page' : undefined}>{it.title}</a></li>)}</ul>
+    </div>
+  ))}
+</nav>

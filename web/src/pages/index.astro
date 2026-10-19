@@ -1,0 +1,268 @@
+---
+import { Code } from 'astro:components';
+import Base from '../layouts/Base.astro';
+import examples from '../data/examples.json';
+import { numbers, compare, limits, faq, integrations } from '../data/numbers';
+import { REPO, PAPER, version, url, isoDate, SITE, PYPI } from '../data/site';
+import { assertRoundTrip, origHTML, templateHTML, esc, type Example } from '../lib/console';
+import { consoleBody } from '../lib/consoleBody';
+
+const demo = examples.demo as Example[];
+const cluster = examples.cluster as Example[];
+[...demo, ...cluster].forEach(assertRoundTrip); // build fails if a demo line does not join back to its bytes
+
+const title = 'Razobill: split a log line into columns, join it back byte for byte';
+const description = 'Razobill splits each log line into a template, numbers and words, stores them as plain columns, and joins them back into the exact original line. C++20 core with Python, DuckDB and C interfaces. Apache 2.0.';
+
+const pythonCode = `# pip install pyrazobill
+import pyrazobill as rz
+
+raw = "Accepted publickey for ubuntu from 192.168.1.100 port 54322 ssh2"
+rec = rz.RzSplit(raw)
+
+print(rec.template)  # Accepted publickey for {s} from {s} port {i} {s}
+print(rec.ints)      # [54322]
+print(rec.strs)      # ['ubuntu', '192.168.1.100', 'ssh2']
+
+assert rz.RzJoin(*rec) == raw   # the exact original line`;
+
+const sqlCode = `INSTALL razobill FROM community;
+LOAD razobill;
+
+CREATE TABLE auth_logs (msg VARCHAR);
+INSERT INTO auth_logs VALUES
+    ('Failed password for root from 192.168.1.100 port 22'),
+    ('Failed password for admin from 10.0.0.1 port 2222'),
+    ('Accepted publickey for ubuntu from 192.168.1.50 port 54322');
+
+-- split every line into template, ints and strs
+SELECT RzSplit(msg) AS parsed FROM auth_logs;
+
+-- group by template without touching the values
+SELECT RzTemplate(msg) AS pattern, COUNT(*) AS count
+FROM auth_logs GROUP BY 1 ORDER BY count DESC;
+
+-- join back: the original lines, byte for byte
+SELECT RzJoin(p.template, p.ints, p.strs) AS line
+FROM (SELECT RzSplit(msg) AS p FROM auth_logs);`;
+
+const cCode = `#include "librazobill/RazobillC.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+int main(void) {
+    const char* msg = "Failed password for root from 192.168.1.100 port 22";
+    RzRecord record;
+    if (RzSplit(msg, strlen(msg), &record) != RZ_OK) return 1;
+    printf("Template: %.*s\\n", (int)record.templateLength, record.templateStr);
+
+    size_t needed = 0;
+    RzJoin(&record, NULL, 0, &needed);          /* ask for the size first */
+    char* buf = (char*)malloc(needed);
+    size_t written = 0;
+    if (RzJoin(&record, buf, needed, &written) == RZ_OK)
+        printf("Joined:   %.*s\\n", (int)written, buf);
+    free(buf);
+    RzFree(&record);
+    return 0;
+}`;
+
+const siteLd = [
+  { '@context': 'https://schema.org', '@type': 'WebSite', name: 'Razobill', url: SITE },
+  {
+    '@context': 'https://schema.org', '@type': 'SoftwareApplication', name: 'Razobill', applicationCategory: 'DeveloperApplication',
+    operatingSystem: 'Windows, Linux, macOS', softwareVersion: version, license: 'https://www.apache.org/licenses/LICENSE-2.0',
+    url: SITE, downloadUrl: PYPI, codeRepository: REPO, programmingLanguage: ['C++', 'Python', 'C'],
+    description, datePublished: '2026-10-07', dateModified: isoDate,
+    author: { '@type': 'Person', name: 'Moustafa Mahmoud Atta', url: 'https://github.com/4t1a' },
+    offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+  },
+  { '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: faq.map((f) => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.a } })) },
+];
+---
+<Base title={title} description={description} jsonld={siteLd}>
+  <main id="main">
+    <!-- ───────── hero ───────── -->
+    <section class="hero container">
+      <h1><span class="l">Split a log line into columns.</span> <span class="l">Join it back, byte for byte.</span></h1>
+      <p class="sub">Razobill is an open-source log parser. It splits each line into a template, numbers and words, stores them as plain columns, and joins them into the exact original line. A C++20 core with Python, DuckDB and C interfaces.</p>
+      <div class="hero-cta">
+        <span class="cmd"><code>pip install pyrazobill</code><button class="copy" type="button" data-copy="pip install pyrazobill" aria-label="Copy install command"></button></span>
+        <a class="btn btn-primary" href={url('docs/tutorials/getting-started/')}>Split your first line</a>
+        <a class="btn btn-quiet" href={REPO}>View on GitHub</a>
+      </div>
+
+      <section class="console" aria-labelledby="console-title">
+        <div class="console-bar">
+          <span class="console-title" id="console-title">duckdb</span>
+          <div class="console-tabs" role="tablist" aria-label="Example log lines">
+            {demo.map((ex, i) => <button type="button" role="tab" id={`tab-${ex.id}`} aria-selected={i === 0} tabindex={i === 0 ? 0 : -1} aria-controls="console-body">{ex.label}</button>)}
+          </div>
+          <button class="console-replay" type="button">Replay</button>
+        </div>
+        <div class="console-body" id="console-body" role="tabpanel" aria-labelledby={`tab-${demo[0].id}`} set:html={consoleBody(demo[0])} />
+        <p class="sr-only console-live" aria-live="polite"></p>
+        <div class="console-foot">
+          <span class="legend">
+            <span><b class="l-i">{'{i}'}</b> numbers, the ints column</span>
+            <span><b class="l-s">{'{s}'}</b> words, the strs column</span>
+            <span>template, plain text</span>
+          </span>
+          <span>Output of pyrazobill {examples.engine.version}. Numbers with leading zeros stay words, so they join back as written.</span>
+        </div>
+        <script type="application/json" id="console-data" set:html={JSON.stringify(demo)} />
+      </section>
+      <p class="proof">Zero mismatches across 69.6 million lines in the project’s own audit. The benchmarks are author-run and every script is in the repository. <a href="#numbers">Read the numbers</a>.</p>
+    </section>
+
+    <!-- ───────── how it works ───────── -->
+    <section class="section" id="how">
+      <div class="container how">
+        <div class="prose">
+          <h2>Logs are born structured.</h2>
+          <p style="margin-top:1.1em">Your code already knows which part of a log line is fixed and which part is a value. Razobill takes the line apart along that seam. The fixed text becomes a template. The values become plain columns you can query.</p>
+          <p class="equation" aria-label="template plus numbers plus words equals line"><span class="t">template</span> + <span class="i">numbers</span> + <span class="s">words</span> = line</p>
+          <p>A deterministic scanner reads each line once. The same line always gives the same template, whatever order lines arrive in, and nothing is thrown away.</p>
+          <p class="small">The idea comes from <a href={PAPER}>Latitude and Doubt</a> (Atta, 2026): a line with one possible shape splits exactly into content and latitude, with zero doubt. Hot paths use AVX-512, AVX2 or NEON, a bump arena, and a 64-bit xxHash of the template.</p>
+          <p><a href={url('docs/explanation/lossless-invertibility/')}>Why the round trip is lossless</a></p>
+        </div>
+        <div class="how-visual">
+        <figure class="fig" style="margin:0">
+          <figcaption class="fig-h">Five lines from an SSH log share one template</figcaption>
+          <div class="fig-scroll" tabindex="0" role="region" aria-label="Five example log lines">
+            {cluster.map((ex, i) => <div class="fig-line"><span>{i + 1}</span><span set:html={origHTML(ex)} /></div>)}
+          </div>
+          <div><div class="muted" style="font-family:var(--font-sans);font-size:.8125rem;margin-bottom:4px">template, the same for all five</div><div class="fig-tpl" set:html={templateHTML(cluster[0])} /></div>
+          <div class="fig-scroll" tabindex="0" role="region" aria-label="Values split from each line">
+            <table>
+              <thead><tr><th scope="col">line</th><th scope="col">ints</th><th scope="col">strs</th></tr></thead>
+              <tbody>
+                {cluster.map((ex, i) => (
+                  <tr><td class="muted">{i + 1}</td>
+                    <td>{ex.ints.map((v, n) => <span class="chip chip-i">{v}</span>)}</td>
+                    <td>{ex.strs.map((v, n) => <><span class="chip chip-s">{v}</span>{n < ex.strs.length - 1 ? ' ' : ''}</>)}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </figure>
+          <figure class="clip">
+            <video class="only-light" controls muted playsinline preload="none" poster={url('video/split-join-poster-light.webp')} width="1280" height="720" aria-describedby="clip-desc"><source src={url('video/split-join-light.mp4')} type="video/mp4" /></video>
+            <video class="only-dark" controls muted playsinline preload="none" poster={url('video/split-join-poster-dark.webp')} width="1280" height="720" aria-describedby="clip-desc"><source src={url('video/split-join-dark.mp4')} type="video/mp4" /></video>
+            <figcaption id="clip-desc" class="small">The same split and join as an 11-second clip, with no sound. A query splits one SSH line into a template, numbers and words; a second query joins them, and the result is true.</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────── install ───────── -->
+    <section class="section" id="install">
+      <div class="container">
+        <div class="head"><h2>Install it and split a line.</h2><p class="lede">One engine, three front doors. Pick the one you already use.</p></div>
+        <div data-tabs>
+          <div class="tabs" role="tablist" aria-label="Language">
+            <button type="button" role="tab" id="t-py" aria-controls="p-py" aria-selected="true">Python</button>
+            <button type="button" role="tab" id="t-sql" aria-controls="p-sql" aria-selected="false" tabindex="-1">DuckDB SQL</button>
+            <button type="button" role="tab" id="t-c" aria-controls="p-c" aria-selected="false" tabindex="-1">C</button>
+          </div>
+          <div class="codepanel" id="p-py" role="tabpanel" aria-labelledby="t-py"><button class="copy" type="button" aria-label="Copy code"></button><Code code={pythonCode} lang="python" theme="css-variables" /></div>
+          <div class="codepanel" id="p-sql" role="tabpanel" aria-labelledby="t-sql" hidden><button class="copy" type="button" aria-label="Copy code"></button><Code code={sqlCode} lang="sql" theme="css-variables" /></div>
+          <div class="codepanel" id="p-c" role="tabpanel" aria-labelledby="t-c" hidden><button class="copy" type="button" aria-label="Copy code"></button><Code code={cCode} lang="c" theme="css-variables" /></div>
+        </div>
+        <p class="small install-note">The Python snippet was run against pyrazobill {examples.engine.version}. The SQL and C come from the <a href={url('docs/how-to/duckdb/')}>DuckDB guide</a> and the <a href={url('docs/reference/c-abi/')}>C ABI reference</a>. Wheels cover Python 3.9 to 3.13 on Windows, Linux and macOS.</p>
+      </div>
+    </section>
+
+    <!-- ───────── numbers ───────── -->
+    <section class="section" id="numbers">
+      <div class="container">
+        <div class="head"><h2>What was measured, and how.</h2><p class="lede">Every figure below comes from the project’s own benchmarks on one Windows 11 machine with 12 logical cores. They are not independent results yet.</p></div>
+        <div class="grid-table" tabindex="0" role="region" aria-label="Benchmark results, scrolls sideways on small screens">
+          <table>
+            <thead><tr><th scope="col">Measurement</th><th scope="col">Result</th><th scope="col">Context</th></tr></thead>
+            <tbody>{numbers.map((r) => <tr><th scope="row">{r.claim}</th><td class="res">{r.result}</td><td>{r.context}</td></tr>)}</tbody>
+          </table>
+        </div>
+        <p class="small table-note">Scripts: <a href={`${REPO}/blob/main/tools/BenchDrain.py`}>BenchDrain.py</a>, <a href={`${REPO}/blob/main/tools/BenchCLP.py`}>BenchCLP.py</a>, and the audit logs in <a href={`${REPO}/tree/main/evidence`}>evidence/</a>. Methodology and per-dataset tables: <a href={url('docs/explanation/benchmarks/')}>Benchmarks</a>.</p>
+      </div>
+    </section>
+
+    <!-- ───────── compare ───────── -->
+    <section class="section" id="compare">
+      <div class="container">
+        <div class="head"><h2>Razobill, Drain3 and CLP.</h2><p class="lede">Drain3 minimizes template count and drops the values. CLP maximizes compression in custom archives. Razobill keeps every byte and puts the values in columns your database can query.</p></div>
+        <div class="grid-table cmp" tabindex="0" role="region" aria-label="Comparison table, scrolls sideways on small screens">
+          <table>
+            <thead><tr><th scope="col"><span class="sr-only">Property</span></th>{compare.cols.map((c) => <th scope="col">{c}</th>)}</tr></thead>
+            <tbody>{compare.rows.map((r) => <tr><th scope="row">{r.k}</th>{r.v.map((v) => <td>{v}</td>)}</tr>)}</tbody>
+          </table>
+        </div>
+        <p class="small table-note">CLP ingests faster than Razobill, and Drain3 groups lines more accurately. Both are in the table because they are true. Full detail: <a href={url('docs/explanation/comparisons/')}>Comparisons</a>.</p>
+      </div>
+    </section>
+
+    <!-- ───────── works with ───────── -->
+    <section class="section" id="works-with">
+      <div class="container">
+        <div class="head"><h2>Works with your stack.</h2></div>
+        <div class="works">
+          {integrations.map((g) => (
+            <div class="works-row">
+              <h3>{g.group}</h3>
+              <div class="works-items">
+                {g.items.map((it) => (
+                  <div class="works-item">
+                    <a href={url(it.href)}>
+                      <span class="wname">
+                        {it.logo
+                          ? <><img class="wlogo only-light" src={url(`brand/partners/${it.logo}-light.svg`)} alt="" width="120" height="36" /><img class="wlogo only-dark" src={url(`brand/partners/${it.logo}-dark.svg`)} alt="" width="120" height="36" /><span class="sr-only">{it.name}</span></>
+                          : <span>{it.name}</span>}
+                      </span>
+                      <span class="wnote">{it.note}</span>
+                    </a>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────── limits ───────── -->
+    <section class="section" id="limits">
+      <div class="container">
+        <div class="head"><h2>Where it falls short.</h2><p class="lede">Know the boundaries before you deploy it.</p></div>
+        <ul class="limits">{limits.map((l) => <li><strong>{l.t}</strong><span>{l.d}</span></li>)}</ul>
+        <p class="small table-note">The full list is in <a href={url('docs/explanation/limits/')}>Known limits</a>.</p>
+      </div>
+    </section>
+
+    <!-- ───────── faq ───────── -->
+    <section class="section" id="faq">
+      <div class="container">
+        <div class="head"><h2>Questions people ask.</h2></div>
+        <div class="faq">
+          {faq.map((f) => <details><summary>{f.q}</summary><div class="ans"><p>{f.a}</p></div></details>)}
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────── closing ───────── -->
+    <section class="section">
+      <div class="container">
+       <div class="closing">
+        <h2>Split your first line.</h2>
+        <p class="lede">It takes about three minutes, and you can check the round trip yourself.</p>
+        <div class="hero-cta">
+          <span class="cmd"><code>pip install pyrazobill</code><button class="copy" type="button" data-copy="pip install pyrazobill" aria-label="Copy install command"></button></span>
+          <a class="btn btn-primary" href={url('docs/tutorials/getting-started/')}>Open the tutorial</a>
+        </div>
+        <div class="cite small"><strong>Cite.</strong> Atta, M. M. (2026). <em>Latitude and Doubt.</em> Zenodo. <a href={PAPER}>doi.org/10.5281/zenodo.23287286</a></div>
+       </div>
+      </div>
+    </section>
+  </main>
+  <script>import '../scripts/console';</script>
+</Base>

@@ -1,0 +1,8 @@
+---
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+interface Props { variant?: 'lockup' | 'mark'; class?: string }
+const { variant = 'lockup', class: cls = '' } = Astro.props;
+const svg = readFileSync(resolve(process.cwd(), `public/brand/${variant === 'mark' ? 'mark' : 'logo'}.svg`), 'utf8');
+---
+<span class:list={['logo', `logo-${variant}`, cls]} set:html={svg} />

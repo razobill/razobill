@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 ACTION_VERSIONS = {
     "actions/checkout": "v7",
     "actions/setup-python": "v7",
+    "actions/setup-node": "v4",
     "actions/upload-artifact": "v7",
     "actions/download-artifact": "v8",
     "docker/setup-qemu-action": "v4",
@@ -54,6 +55,7 @@ WORKFLOW_ACTIONS = {
     "docs-lint.yml": BUILD_ACTIONS,
     "pages.yml": {
         "actions/checkout",
+        "actions/setup-node",
         "actions/configure-pages",
         "actions/upload-pages-artifact",
         "actions/deploy-pages",
@@ -133,6 +135,8 @@ class TestWorkflowActions(unittest.TestCase):
             if "actions/checkout" not in WORKFLOW_ACTIONS[name]:
                 continue
             for job_id, job in workflow["jobs"].items():
+                if name == "pages.yml" and job_id == "deploy":
+                    continue
                 with self.subTest(workflow=name, job=job_id):
                     # verifies checkout is the first operational step in job
                     checkout = self.action_step(name, job_id, "actions/checkout")
@@ -306,27 +310,28 @@ class TestWorkflowActions(unittest.TestCase):
     def test_pages_actions_preserve_upload_deploy_order_and_environment_output(self):
         """verify Pages configure, upload, and deploy sequence and config"""
         workflow = self.workflows["pages.yml"]
-        job = workflow["jobs"]["deploy"]
-        configure = self.action_step("pages.yml", "deploy", "actions/configure-pages")
-        upload = self.action_step("pages.yml", "deploy", "actions/upload-pages-artifact")
+        build_job = workflow["jobs"]["build"]
+        deploy_job = workflow["jobs"]["deploy"]
+        configure = self.action_step("pages.yml", "build", "actions/configure-pages")
+        upload = self.action_step("pages.yml", "build", "actions/upload-pages-artifact")
         deploy = self.action_step("pages.yml", "deploy", "actions/deploy-pages")
-        # verifies configure -> upload -> deploy step execution sequence
-        self.assertLess(job["steps"].index(configure), job["steps"].index(upload))
-        self.assertLess(job["steps"].index(upload), job["steps"].index(deploy))
-        # verifies web documentation path and presence of entrypoint index.html
-        self.assertEqual(upload["with"]["path"], "./docs/web")
-        index_html = ROOT / upload["with"]["path"] / "index.html"
-        self.assertTrue(index_html.is_file())
+        # verifies configure -> upload step execution sequence in build job
+        self.assertLess(build_job["steps"].index(configure), build_job["steps"].index(upload))
+        # verifies web build artifact path and presence of package.json
+        self.assertEqual(upload["with"]["path"], "web/dist")
+        package_json = ROOT / "web" / "package.json"
+        self.assertTrue(package_json.is_file())
         self.assertEqual(
             upload.get("with", {}).get("name", "github-pages"),
             deploy.get("with", {}).get("artifact_name", "github-pages"),
         )
-        # verifies deployment environment name, URL output binding, and scopes
-        self.assertEqual(job["environment"]["name"], "github-pages")
+        # verifies deployment environment name, URL output binding, and dependencies
+        self.assertEqual(deploy_job["environment"]["name"], "github-pages")
         self.assertEqual(
-            job["environment"]["url"],
+            deploy_job["environment"]["url"],
             "${{ steps." + deploy["id"] + ".outputs.page_url }}",
         )
+        self.assertEqual(deploy_job["needs"], "build")
         self.assertEqual(workflow["permissions"]["pages"], "write")
         self.assertEqual(workflow["permissions"]["id-token"], "write")
 

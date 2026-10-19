@@ -1,0 +1,50 @@
+---
+import Base from './Base.astro';
+import DocsNav from '../components/DocsNav.astro';
+import '../styles/docs.css';
+import { REPO, url } from '../data/site';
+
+interface Heading { depth: number; slug: string; text: string }
+interface Props {
+  title: string; description: string; path: string; current?: string;
+  nav: { id: string; title: string; items: { id: string; title: string; href: string }[] }[];
+  headings?: Heading[]; groupTitle?: string; editPath?: string;
+  prev?: { title: string; href: string }; next?: { title: string; href: string };
+}
+const { title, description, path, current, nav, headings = [], groupTitle, editPath, prev, next } = Astro.props;
+const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
+---
+<Base title={`${title} | Razobill docs`} description={description} path={path}>
+  <div class="container docs">
+    <details class="docs-menu">
+      <summary>Documentation menu</summary>
+      <DocsNav nav={nav} current={current} label="Documentation sections, mobile menu" />
+    </details>
+    <div class="docs-side"><DocsNav nav={nav} current={current} /></div>
+
+    <main id="main" class="article">
+      <nav class="crumbs" aria-label="Breadcrumb">
+        <a href={url('docs/')}>Docs</a>{groupTitle && <><span aria-hidden="true">/</span><span>{groupTitle}</span></>}
+      </nav>
+      <article class="prose" data-pagefind-body>
+        <slot />
+      </article>
+      <footer class="doc-foot">
+        {editPath && <p class="small"><a href={`${REPO}/edit/main/${editPath}`}>Edit this page on GitHub</a></p>}
+        {(prev || next) && (
+          <nav class="pn" aria-label="Previous and next page">
+            {prev ? <a class="pn-prev" href={prev.href}><span class="small">Previous</span><strong>{prev.title}</strong></a> : <span />}
+            {next ? <a class="pn-next" href={next.href}><span class="small">Next</span><strong>{next.title}</strong></a> : <span />}
+          </nav>
+        )}
+      </footer>
+    </main>
+
+    {toc.length > 0 && (
+      <aside class="toc" aria-label="On this page">
+        <h2 class="dn-h">On this page</h2>
+        <ul>{toc.map((h) => <li class={`d${h.depth}`}><a href={`#${h.slug}`}>{h.text}</a></li>)}</ul>
+      </aside>
+    )}
+  </div>
+</Base>

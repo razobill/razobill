@@ -1,0 +1,26 @@
+---
+import { render } from 'astro:content';
+import Docs from '../../layouts/Docs.astro';
+import { loadDocs, titleOf, summaryOf } from '../../lib/docs';
+import { url } from '../../data/site';
+
+export async function getStaticPaths() {
+  const { all } = await loadDocs();
+  return all.map((doc) => ({ params: { slug: doc.id }, props: { id: doc.id } }));
+}
+const { id } = Astro.props;
+const { byId, nav, flat } = await loadDocs();
+const doc = byId.get(id)!;
+const { Content, headings } = await render(doc);
+const i = flat.findIndex((d) => d.id === id);
+const item = flat[i];
+const groupTitle = nav.find((g) => g.id === item?.group)?.title;
+const editPath = doc.filePath ? doc.filePath.replace(/^\.\.\//, '') : undefined;
+---
+<Docs
+  title={titleOf(doc)} description={summaryOf(doc) || 'Razobill documentation'}
+  path={`docs/${id}/`} current={id} nav={nav} headings={headings} groupTitle={groupTitle} editPath={editPath}
+  prev={i > 0 ? flat[i - 1] : undefined} next={i >= 0 && i < flat.length - 1 ? flat[i + 1] : undefined}
+>
+  <Content />
+</Docs>

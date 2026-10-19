@@ -1,0 +1,14 @@
+---
+import Base from '../layouts/Base.astro';
+import { url } from '../data/site';
+---
+<Base title="Page not found | Razobill" description="This address does not exist." noindex>
+  <main id="main" class="container" style="padding-block: clamp(64px, 12vw, 160px) clamp(80px, 14vw, 200px)">
+    <h1>Page not found.</h1>
+    <p class="lede" style="margin-top:1em">Nothing lives at this address. It may have moved, or the link may have a typo.</p>
+    <p class="hero-cta" style="margin-top:2em">
+      <a class="btn btn-primary" href={url('')}>Back to the home page</a>
+      <a class="btn btn-quiet" href={url('docs/')}>Browse the docs</a>
+    </p>
+  </main>
+</Base>

@@ -1,0 +1,55 @@
+---
+import '@fontsource-variable/martian-mono/standard.css';
+import '@fontsource-variable/hanken-grotesk';
+import '../styles/global.css';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import { SITE, url } from '../data/site';
+
+interface Props { title: string; description: string; path?: string; jsonld?: object; noindex?: boolean; wide?: boolean }
+const { title, description, path = '', jsonld, noindex = false } = Astro.props;
+const canonical = new URL(path, SITE).href;
+const og = new URL('og.png', SITE).href;
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    {noindex && <meta name="robots" content="noindex" />}
+    <meta name="author" content="Moustafa Mahmoud Atta" />
+    <meta name="theme-color" content="#F3F3F3" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0C0C0C" media="(prefers-color-scheme: dark)" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Razobill" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={og} />
+    <meta property="og:image:alt" content="Razobill logo: a razorbill with an arrow for a beak" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href={url('favicon.svg')} type="image/svg+xml" />
+    <link rel="icon" href={url('favicon-48.png')} sizes="48x48" type="image/png" />
+    <link rel="apple-touch-icon" href={url('apple-touch-icon.png')} />
+    <link rel="alternate" type="text/plain" href={url('llms.txt')} title="llms.txt" />
+    <script is:inline>
+      (() => {
+        const d = document.documentElement;
+        let t = null; try { t = localStorage.getItem('rz-theme'); } catch (e) {}
+        d.dataset.theme = t === 'light' || t === 'dark' ? t : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        if (!matchMedia('(prefers-reduced-motion: reduce)').matches) d.classList.add('anim');
+      })();
+    </script>
+    {jsonld && <script type="application/ld+json" set:html={JSON.stringify(jsonld)} />}
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <Header />
+    <slot />
+    <Footer />
+    <script>import '../scripts/ui';</script>
+  </body>
+</html>

@@ -1,0 +1,33 @@
+---
+import Base from '../../layouts/Base.astro';
+import '../../styles/docs.css';
+import { loadDocs } from '../../lib/docs';
+const { nav } = await loadDocs();
+const kinds: Record<string, string> = {
+  tutorials: 'Follow a short exercise and finish with something that works.',
+  'how-to': 'Get one specific job done. You already know what you want.',
+  reference: 'Look up exact signatures, types and policies.',
+  explanation: 'Understand how it works, why it is built this way, and where it stops.',
+  more: 'For people contributing to the documentation.',
+};
+---
+<Base title="Documentation | Razobill" description="Tutorials, how-to guides, reference and explanation for Razobill, the lossless log parser for DuckDB, ClickHouse, Python and C." path="docs/">
+  <main id="main" class="container docs-home">
+    <header class="dh-head">
+      <h1>Documentation</h1>
+      <p class="lede">Four kinds of page, so you can find the right one quickly. Press <kbd class="kbd-inline">Ctrl K</kbd> to search all of it.</p>
+    </header>
+    {nav.filter((g) => g.items.length).map((g) => (
+      <section class="dh-group" id={g.id}>
+        <div><h2>{g.title}</h2><p class="small">{kinds[g.id] ?? g.lead}</p></div>
+        <ul class="dh-list">
+          {g.items.map((it) => <li><a href={it.href}><strong>{it.title}</strong><span>{it.summary}</span></a></li>)}
+        </ul>
+      </section>
+    ))}
+  </main>
+  <script>
+    const mac = /Mac|iPhone|iPad/.test(navigator.platform);
+    document.querySelectorAll('.kbd-inline').forEach((k) => (k.textContent = mac ? '⌘K' : 'Ctrl K'));
+  </script>
+</Base>

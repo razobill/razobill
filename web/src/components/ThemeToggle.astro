@@ -1,0 +1,17 @@
+<button class="icon-btn theme-toggle" type="button" aria-label="Switch theme" title="Switch theme">
+  <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.5" y="1.5" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M1.5 14.5 14.5 1.5v13z" fill="currentColor"/></svg>
+</button>
+<script>
+  const btn = document.querySelector<HTMLButtonElement>('.theme-toggle');
+  const root = document.documentElement;
+  const label = () => btn?.setAttribute('aria-label', root.dataset.theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme');
+  label();
+  btn?.addEventListener('click', () => {
+    const next = root.dataset.theme === 'dark' ? 'light' : 'dark';
+    root.classList.add('theme-fade');
+    root.dataset.theme = next;
+    try { localStorage.setItem('rz-theme', next); } catch {}
+    label();
+    setTimeout(() => root.classList.remove('theme-fade'), 260);
+  });
+</script>

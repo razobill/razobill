@@ -32,7 +32,8 @@ def verify_links():
     out: True if all relative links resolve to existing files, False otherwise
     """
     root = pathlib.Path(__file__).resolve().parent.parent
-    md_files = list(root.rglob("*.md"))
+    ignored_dirs = {"node_modules", "build", ".git", "thirdparty", "extension-ci-tools", ".superpowers"}
+    md_files = [p for p in root.rglob("*.md") if not any(part in ignored_dirs for part in p.parts)]
     broken = []
     total_links = 0
 

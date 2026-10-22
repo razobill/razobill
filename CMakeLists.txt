@@ -120,23 +120,25 @@ target_compile_definitions(librazobill PUBLIC LIBRAZOBILL_STATIC)
 
 # Universal C ABI Shared Library
 # (for foreign FFIs: Go, Rust, Python ctypes, Zig, C#)
-add_library(razobill_cabi SHARED src/RazobillC.cpp)
-target_include_directories(razobill_cabi PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
-target_compile_definitions(razobill_cabi PRIVATE LIBRAZOBILL_EXPORTS)
-target_link_libraries(razobill_cabi PRIVATE librazobill)
-if(WIN32)
-  set_target_properties(razobill_cabi PROPERTIES PREFIX "")
+if(NOT RAZOBILL_BUILD_EXT_ONLY)
+  add_library(razobill_cabi SHARED src/RazobillC.cpp)
+  target_include_directories(razobill_cabi PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
+  target_compile_definitions(razobill_cabi PRIVATE LIBRAZOBILL_EXPORTS)
+  target_link_libraries(razobill_cabi PRIVATE librazobill)
+  if(WIN32)
+    set_target_properties(razobill_cabi PROPERTIES PREFIX "")
+  endif()
+  set_target_properties(razobill_cabi PROPERTIES
+    OUTPUT_NAME razobill_cabi
+    ARCHIVE_OUTPUT_NAME razobill_cabi
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_BINARY_DIR}"
+    RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_BINARY_DIR}"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_BINARY_DIR}"
+    LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_BINARY_DIR}"
+  )
 endif()
-set_target_properties(razobill_cabi PROPERTIES
-  OUTPUT_NAME razobill
-  ARCHIVE_OUTPUT_NAME razobill_cabi
-  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-  RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_BINARY_DIR}"
-  RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_BINARY_DIR}"
-  LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-  LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_BINARY_DIR}"
-  LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_BINARY_DIR}"
-)
 
 add_library(RazobillDuckdb SHARED ext/duckdb/DuckdbExtension.cpp)
 target_include_directories(RazobillDuckdb PRIVATE include thirdparty/duckdbcapi)
@@ -156,7 +158,7 @@ if(WIN32)
   endif()
   set_target_properties(RazobillDuckdb PROPERTIES
     PREFIX ""
-    OUTPUT_NAME razobill_duckdb
+    OUTPUT_NAME razobill
     ARCHIVE_OUTPUT_NAME razobill_duckdb
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_BINARY_DIR}"
@@ -167,7 +169,7 @@ if(WIN32)
   )
 else()
   set_target_properties(RazobillDuckdb PROPERTIES
-    OUTPUT_NAME razobill_duckdb
+    OUTPUT_NAME razobill
     ARCHIVE_OUTPUT_NAME razobill_duckdb
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_BINARY_DIR}"
@@ -289,13 +291,23 @@ endif()
 # ==============================================================================
 
 # Install librazobill static library and razobill_cabi shared library
-install(TARGETS librazobill razobill_cabi
-  EXPORT librazobillTargets
-  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-  INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-)
+if(TARGET razobill_cabi)
+  install(TARGETS librazobill razobill_cabi
+    EXPORT librazobillTargets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+  )
+else()
+  install(TARGETS librazobill
+    EXPORT librazobillTargets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+  )
+endif()
 
 # Install public headers
 install(DIRECTORY include/librazobill

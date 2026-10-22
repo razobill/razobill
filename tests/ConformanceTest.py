@@ -25,6 +25,12 @@ def find_c_lib():
     err: raises RuntimeError if library is missing
     """
     names = [
+        "razobill_cabi.dll",
+        "librazobill_cabi.dll",
+        "librazobill_cabi.so",
+        "razobill_cabi.so",
+        "librazobill_cabi.dylib",
+        "razobill_cabi.dylib",
         "razobill.dll",
         "librazobill.dll",
         "librazobill.so",

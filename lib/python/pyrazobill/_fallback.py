@@ -444,4 +444,4 @@ def hash(input_val: Union[str, bytes]) -> int:
 
 def version() -> str:
     """return semantic package version string matching C++ core"""
-    return "1.1.3"
+    return "1.1.4"

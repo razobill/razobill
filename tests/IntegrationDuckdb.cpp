@@ -334,6 +334,7 @@ TEST_CASE("native functions equal the SQL regex specification (real logs + 60,00
     }
     auto b = open();
     b->exec("SET threads = 4");
+    b->exec("SET lambda_syntax = 'ENABLE_SINGLE_ARROW'");
     loadRaw(*b);
     const std::string tok = R"([^\s=,;:()\[\]{}"''<>|/]*[0-9][^\s=,;:()\[\]{}"''<>|/]*)";
     b->exec("CREATE MACRO s_esc(m) AS m LIKE '%' || chr(17) || '%' OR m LIKE '%' || chr(18) || '%' OR m LIKE '%' || "

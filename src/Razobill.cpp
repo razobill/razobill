@@ -39,9 +39,10 @@ namespace {
 /// err     suppresses rollback exceptions during stack unwinding
 class TransactionGuard {
 public:
-    // ~ clickhouse adbc has no multi-statement acid, so guard stays dormant
+    // ~ ClickHouse ADBC and DuckDB DDL/DML mixed flows avoid explicit multi-statement transactions; guard stays dormant
     explicit TransactionGuard(Backend& db RZ_LIFETIMEBOUND, Flavor flavor)
-        : db_(db), active_(flavor == Flavor::DuckDB) {
+        : db_(db), active_(false) {
+        (void)flavor;
         if (active_) {
             try {
                 db_.exec("BEGIN TRANSACTION");

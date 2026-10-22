@@ -176,7 +176,7 @@ except ImportError:
     cmdClass = {}
 
 setup(
-    version="1.1.3",
+    version="1.1.4",
     ext_modules=extModules,
     cmdclass=cmdClass,
 )

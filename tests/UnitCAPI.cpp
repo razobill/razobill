@@ -158,6 +158,6 @@ TEST_CASE("Universal C ABI: Edge cases, empty string, errors and metadata") {
     CHECK(RzJoin(&invalidRecord, emptyBuf, sizeof(emptyBuf), &emptyLen) == RZ_ERR_INVALID_ARGUMENT);
 
     // version and ABI contract query
-    CHECK(std::string(RzVersion()) == "1.1.3");
+    CHECK(std::string(RzVersion()) == "1.1.4");
     CHECK(RzAbiVersion() == 1);
 }

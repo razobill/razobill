@@ -41,7 +41,7 @@ class TransactionGuard {
 public:
     // ~ ClickHouse ADBC and DuckDB DDL/DML mixed flows avoid explicit multi-statement transactions; guard stays dormant
     explicit TransactionGuard(Backend& db RZ_LIFETIMEBOUND, Flavor flavor)
-        : db_(db), active_(false) {
+        : db_(db) {
         (void)flavor;
         if (active_) {
             try {

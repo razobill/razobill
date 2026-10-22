@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
+## [1.1.4] - 2026-10-22
+
+### Fixed
+
+- **DuckDB Community Extension Target Naming**:
+  - Disambiguated CMake target outputs between `RazobillDuckdb` (DuckDB extension) and `razobill_cabi` (universal C FFI shared library).
+  - Renamed `razobill_cabi` target output to `razobill_cabi` and guarded compilation with `if(NOT RAZOBILL_BUILD_EXT_ONLY)`.
+  - Set `RazobillDuckdb` target output to `razobill` exporting `razobill_init_c_api` and `librazobill_init_c_api`, resolving the missing symbol loader error (`undefined symbol: razobill_init_c_api`) on community binaries.
+- **DuckDB v2.0.0 Compatibility**:
+  - Upgraded DuckDB extension C API headers (`duckdb.h`, `duckdb_extension.h`) in `thirdparty/duckdbcapi/` to official DuckDB v2.0.0.
+  - Resolved table scan row group pruning in `RazobillEngine` by maintaining `TransactionGuard` dormant on mixed DDL/DML storage flows.
+  - Configured DuckDB 2.0 single-arrow lambda syntax (`SET lambda_syntax = 'ENABLE_SINGLE_ARROW'`) in integration test suite.
+
+### Changed
+
+- **Version Bump**:
+  - Bumped canonical project version to `1.1.4` across `VERSION`, `Version.hpp`, `RazobillC.h`, `setup.py`, `pyproject.toml`, and `pyrazobill/__init__.py`.
+  - Updated community distribution manifest `extensions/razobill/description.yml` to v1.1.4 pointing to commit `c9320e8` for DuckDB v2.0.0 (`ref`) and v1.5.6 (`variegata`).
+
+---
+
 ## [1.1.3] - 2026-10-18
 
 ### Added
@@ -185,6 +206,7 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
+[1.1.4]: https://github.com/razobill/razobill/releases/tag/v1.1.4
 [1.1.3]: https://github.com/razobill/razobill/releases/tag/v1.1.3
 [1.1.2]: https://github.com/razobill/razobill/releases/tag/v1.1.2
 [1.0.0]: https://github.com/razobill/razobill/releases/tag/v1.0.0

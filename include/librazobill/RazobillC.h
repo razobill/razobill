@@ -190,7 +190,7 @@ RZ_API void RzFree(RzRecord* record);
 RZ_API const char* RzStatusMessage(RzStatus status);
 
 /**
- * Returns the runtime library semantic version string (e.g. "1.1.3").
+ * Returns the runtime library semantic version string (e.g. "1.1.4").
  *
  * out: pointer to static constant NUL-terminated string
  * own: static storage

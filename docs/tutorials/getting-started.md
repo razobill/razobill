@@ -15,7 +15,7 @@ This tutorial guides you through installing Razobill, splitting a raw log line i
 Before starting, confirm you have:
 
 - Python 3.9 or newer installed (`python --version`).
-- DuckDB 1.5.6 or newer installed (`duckdb --version`), or use Python's embedded DuckDB package.
+- DuckDB 1.5.6 or 2.0.0 or newer installed (`duckdb --version`), or use Python's embedded DuckDB package.
 
 ---
 
@@ -36,7 +36,7 @@ python -c "import pyrazobill as rz; print(rz.__version__)"
 Expected output:
 
 ```text
-1.1.3
+1.1.4
 ```
 
 ---

@@ -1,6 +1,6 @@
 # Publishing `pyrazobill` to PyPI
 
-This guide provides the official release instructions for building, validating, and publishing the `pyrazobill 1.1.3` distribution packages to the Python Package Index (PyPI) and TestPyPI.
+This guide provides the official release instructions for building, validating, and publishing the `pyrazobill 1.1.4` distribution packages to the Python Package Index (PyPI) and TestPyPI.
 
 ---
 
@@ -36,8 +36,8 @@ python -m build
 
 Expected output in `lib/python/dist/`:
 
-- `pyrazobill-1.1.3.tar.gz`: Universal source distribution bundled with C++20 core engine headers
-- `pyrazobill-1.1.3-cp313-cp313-win_amd64.whl`: Platform-specific native binary wheel
+- `pyrazobill-1.1.4.tar.gz`: Universal source distribution bundled with C++20 core engine headers
+- `pyrazobill-1.1.4-cp313-cp313-win_amd64.whl`: Platform-specific native binary wheel
 
 ---
 
@@ -73,8 +73,8 @@ twine check dist/*
 Expected output:
 
 ```text
-Checking dist/pyrazobill-1.1.3.tar.gz: PASSED
-Checking dist/pyrazobill-1.1.3-cp313-cp313-win_amd64.whl: PASSED
+Checking dist/pyrazobill-1.1.4.tar.gz: PASSED
+Checking dist/pyrazobill-1.1.4-cp313-cp313-win_amd64.whl: PASSED
 ```
 
 ---

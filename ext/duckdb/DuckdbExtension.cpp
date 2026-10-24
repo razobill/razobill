@@ -117,7 +117,6 @@ struct Scratch {
     /// prune oversized vectors back to initial capacity if exceeding 1 MB cap
     void trim() {
         if (text.capacity() > kScratchKeepBytes) std::string().swap(text);
-        if (record.skeleton.capacity() > kScratchKeepBytes) std::string().swap(record.skeleton);
         if (record.templateStr.capacity() > kScratchKeepBytes) std::string().swap(record.templateStr);
         if (record.ints.capacity() * sizeof(std::int64_t) > kScratchKeepBytes)
             std::vector<std::int64_t>().swap(record.ints);

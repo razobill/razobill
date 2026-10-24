@@ -28,7 +28,7 @@ struct SlotRecord {
     std::vector<std::int64_t> ints;     // values parsed into '{i}' integer slots
     std::vector<std::string_view> strs; // borrowed views into '{s}' string slots
 
-    // Legacy fields for internal backward compatibility
+    // Legacy fields for internal backward compatibility (deprecated; no longer populated in parse())
     std::string skeleton;
     std::string types;
 

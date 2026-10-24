@@ -310,7 +310,6 @@ Status parse(std::string_view msg, SlotRecord& out, ScanMode mode) {
     if (msg.size() > kMaxMessageBytes) [[unlikely]]
         return Status::TooLarge;
     out.templateStr.reserve(msg.size() + 16);
-    out.skeleton.reserve(msg.size() + 16);
 
     const auto appendEscaped = [&out](std::string_view s) {
         for (char c : s) {
@@ -330,33 +329,21 @@ Status parse(std::string_view msg, SlotRecord& out, ScanMode mode) {
     const auto result = scan(
         msg,
         [&out, &appendEscaped](std::string_view gap, std::string_view tok) {
-            out.skeleton.append(gap);
-            out.skeleton.push_back(static_cast<char>(kPlaceholder));
             appendEscaped(gap);
             // leading zeros (e.g. "007") stay strings to prevent byte loss
             if (isIntToken(tok)) {
                 std::int64_t v = 0;
                 std::from_chars(tok.data(), tok.data() + tok.size(), v);
                 out.ints.push_back(v);
-                out.types.push_back('I');
                 out.templateStr.append("{i}");
             } else {
                 out.strs.push_back(tok);
-                out.types.push_back('S');
                 out.templateStr.append("{s}");
             }
         },
         mode);
 
-    out.skeleton.append(result.tail);
     appendEscaped(result.tail);
-
-    // control characters 0x11..0x13 in payload invalidate legacy wire format
-    if (result.reserved) {
-        out.skeleton.clear();
-        out.types.clear();
-    }
-
     return Status::Ok;
 }
 

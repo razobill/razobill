@@ -36,8 +36,8 @@ python -m build
 
 Expected output in `lib/python/dist/`:
 
-- `pyrazobill-1.1.6.tar.gz`: Universal source distribution bundled with C++20 core engine headers
-- `pyrazobill-1.1.6-cp313-cp313-win_amd64.whl`: Platform-specific native binary wheel
+- `pyrazobill-1.1.7.tar.gz`: Universal source distribution bundled with C++20 core engine headers
+- `pyrazobill-1.1.7-cp313-cp313-win_amd64.whl`: Platform-specific native binary wheel
 
 ---
 
@@ -73,8 +73,8 @@ twine check dist/*
 Expected output:
 
 ```text
-Checking dist/pyrazobill-1.1.6.tar.gz: PASSED
-Checking dist/pyrazobill-1.1.6-cp313-cp313-win_amd64.whl: PASSED
+Checking dist/pyrazobill-1.1.7.tar.gz: PASSED
+Checking dist/pyrazobill-1.1.7-cp313-cp313-win_amd64.whl: PASSED
 ```
 
 ---

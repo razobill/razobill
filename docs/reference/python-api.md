@@ -21,7 +21,7 @@ This document specifies the functions, classes, and constants exported by the `p
 | `isNative` | Function | Returns `True` if compiled C++ SIMD extension is loaded. | Stable |
 | `RzRecord` | NamedTuple | Decomposed record containing `(template, ints, strs)`. | Stable |
 | `RzError` | Class | Exception raised on argument validation or parsing errors. | Stable |
-| `__version__` | Constant | Package version string (`"1.1.4"`). | Stable |
+| `__version__` | Constant | Package version string (`"1.1.7"`). | Stable |
 
 ---
 

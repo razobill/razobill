@@ -97,7 +97,7 @@ dist:
   output_path: ./dist
 
 processors:
-  - gomod: github.com/razobill/razobill/ext/otel v1.1.4
+  - gomod: github.com/razobill/razobill/ext/otel v1.1.7
     path: ext/otel
 ```
 

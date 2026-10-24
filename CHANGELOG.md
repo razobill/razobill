@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
+## [1.1.7] - 2026-10-24
+
+### Added
+
+- **DuckDB Community Extensions Compatibility Matrix Completion**:
+  - Added `opt_in_platforms: "osx_amd64"` in `ext/duckdb/description.yml` to ensure macOS Intel binaries are compiled for DuckDB 2.0.0 (`v2.0-cyanoptera` distribution).
+  - Added `andium:` repository coordinate mapping to enable automated builds for DuckDB 1.4.x (LTS) alongside `ref:` (v2.0.0) and `variegata:` (v1.5.x).
+  - Un-excluded `windows_amd64_mingw` following verified native C++20 thread-local and CMake runtime platform hardening (`windows_amd64`).
+
+### Fixed
+
+- **Round-3 Engineering Hardening & Correctness**:
+  - **C ABI Bounds & Memory Hygiene**: Hardened slot upper bounds in `RzJoin` for legacy delimiter keys (`(templateLength / 2) + 1`); added `InternalRecord::trim()` to prevent memory retention across `RzSplit` calls; added RAII `ScratchTrimGuard` to ensure bounded scratch retention in `RzJoin` and `RzTemplate`.
+  - **Memory Arena Retention**: Implemented `trim(maxRetainedCapacity)` in `MemoryArena` to bound heap retention under persistent worker threads.
+  - **SIMD Scanner Entry Guards**: Added defensive `if (length == 0 || !data) return 0;` entry guards across all SIMD scan routines (AVX2, NEON, SSE4.2, SWAR).
+  - **ReDoS Mitigation**: Implemented `requirePattern()` in `Razobill.cpp` to validate regular expression complexity and guard against pathological regex backtracking.
+  - **Python Fallback Parity**: Synchronized `_fallback.py` control character escaping (`0x11`, `0x12`, `0x13`) with C++ engine and added RAII cleanup in `PyRazobill.cpp`.
+  - **OpenTelemetry Go Processor Zero-Allocation**: Replaced per-log `C.CBytes` and `C.free` allocations with direct pointer passing via `unsafe.Pointer(&rawBytes[0])`.
+
 ## [1.1.6] - 2026-10-24
 
 ### Fixed

@@ -68,7 +68,9 @@ public:
     /// generates extension call RzHash(col) producing bit-identical xxHash64
     std::string hashExpr(std::string_view t) const override { return "RzHash(" + std::string(t) + ")"; }
 
-    std::string templateExpr(std::string_view f) const override { return std::string(f); }
+    std::string templateExpr(std::string_view f) const override {
+        return "replace(replace(" + std::string(f) + ", '{i}', '<*>'), '{s}', '<*>')";
+    }
 
     // uses DELETE FROM because DuckDB TRUNCATE varies across table types
     // ~ delete from because truncate was restricted on attached databases
@@ -125,13 +127,9 @@ public:
         const std::string c(col);
         const std::string tok = quote(kTokenRegex);
         const std::string ints = quote(kIntRegex);
-        const std::string ch17 = "char(" + std::to_string(static_cast<int>(kControlReserved17)) + ")";
-        const std::string ch18 = "char(" + std::to_string(static_cast<int>(core::kPlaceholder)) + ")";
-        const std::string ch19 = "char(" + std::to_string(static_cast<int>(core::kTypeSeparator)) + ")";
-        return "if(position(" + c + ", " + ch17 + ") > 0 OR position(" + c + ", " + ch18 + ") > 0 OR position(" + c +
-               ", " + ch19 + ") > 0, concat(" + ch18 + ", " + ch19 + ", 'S'), concat(replaceRegexpAll(" + c + ", " +
-               tok + ", " + ch18 + "), " + ch19 + ", arrayStringConcat(arrayMap(t -> if(match(t, " + ints +
-               "), 'I', 'S'), extractAll(" + c + ", " + tok + ")))))";
+        return "arrayStringConcat(arrayZipWith((sep, repl) -> concat(sep, repl), splitByRegexp(" + tok + ", " + c +
+               "), arrayPushBack(arrayMap(t -> if(match(t, " + ints + "), '{i}', '{s}'), extractAll(" + c + ", " +
+               tok + ")), '')))";
     }
 
     /// maps to native xxHash64 built-in function
@@ -143,7 +141,7 @@ public:
         const std::string ch18 = "char(" + std::to_string(static_cast<int>(core::kPlaceholder)) + ")";
         const std::string ch19 = "char(" + std::to_string(static_cast<int>(core::kTypeSeparator)) + ")";
         return "if(position(" + s + ", " + ch19 + ") > 0, replaceAll(substring(" + s + ", 1, position(" + s + ", " +
-               ch19 + ") - 1), " + ch18 + ", '<*>'), replaceAll(" + s + ", " + ch18 + ", '<*>'))";
+               ch19 + ") - 1), " + ch18 + ", '<*>'), replaceAll(replaceAll(" + s + ", '{i}', '<*>'), '{s}', '<*>'))";
     }
 
     std::string truncate(std::string_view t) const override { return "TRUNCATE TABLE " + std::string(t); }

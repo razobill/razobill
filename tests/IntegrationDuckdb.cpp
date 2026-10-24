@@ -567,3 +567,52 @@ TEST_CASE("control plane: config synchronization, transactional atomicity and ba
     CHECK(v3 == 3);
     CHECK(rz.version() == 3);
 }
+
+// failure-injection proxy to verify TransactionGuard rollback on failure
+class InjectedFailBackend final : public Backend {
+public:
+    explicit InjectedFailBackend(std::unique_ptr<Backend> inner) : inner_(std::move(inner)) {}
+    Flavor flavor() const noexcept override { return inner_->flavor(); }
+    void setFailOn(std::string pattern) {
+        failPattern_ = std::move(pattern);
+        failActive_ = true;
+    }
+    void exec(std::string_view sql) override {
+        if (failActive_ && sql.find(failPattern_) != std::string::npos) {
+            throw std::runtime_error("injected error in exec: " + std::string(sql));
+        }
+        inner_->exec(sql);
+    }
+    Table query(std::string_view sql) override {
+        if (failActive_ && sql.find(failPattern_) != std::string::npos) {
+            throw std::runtime_error("injected error in query: " + std::string(sql));
+        }
+        return inner_->query(sql);
+    }
+    Backend& inner() { return *inner_; }
+
+private:
+    std::unique_ptr<Backend> inner_;
+    std::string failPattern_;
+    bool failActive_ = false;
+};
+
+TEST_CASE("TransactionGuard: failure injection triggers rollback") {
+    if (!duckdbAvailable()) {
+        MESSAGE("Skipping DuckDB test: DuckDB driver not present");
+        return;
+    }
+    auto rawDb = open();
+    rawDb->exec("CREATE TABLE fail_test(id INTEGER, msg VARCHAR, level VARCHAR)");
+    rawDb->exec("INSERT INTO fail_test VALUES (1, 'Disk error on sda1', 'ERROR')");
+
+    auto proxy = std::make_unique<InjectedFailBackend>(std::move(rawDb));
+    proxy->setFailOn("CREATE OR REPLACE VIEW fail_logs AS");
+
+    RazobillEngine rz(*proxy, {.table = "fail_logs", .purpose = "level"});
+    CHECK_THROWS_AS(rz.compact("fail_test"), std::runtime_error);
+
+    // Verify that the view was NOT created due to rollback
+    const auto viewCount = proxy->inner().query("SELECT count(*) FROM duckdb_views() WHERE view_name = 'fail_logs'").i64(0, 0);
+    CHECK(viewCount == 0);
+}

@@ -42,8 +42,8 @@ public:
     // ~ ClickHouse ADBC and DuckDB DDL/DML mixed flows avoid explicit multi-statement transactions; guard stays dormant
     explicit TransactionGuard(Backend& db RZ_LIFETIMEBOUND, Flavor flavor)
         : db_(db) {
-        (void)flavor;
-        if (active_) {
+        if (flavor == Flavor::DuckDB) {
+            active_ = true;
             try {
                 db_.exec("BEGIN TRANSACTION");
             } catch (...) {
@@ -424,8 +424,9 @@ std::uint64_t RazobillEngine::compact(const std::string& src) {
         sel += " LEFT JOIN rb_str d" + std::to_string(j) + " ON d" + std::to_string(j) + ".s = s.rbs[" +
                std::to_string(j + 1) + "]";
     if (db_.query("SELECT count(*) FROM duckdb_tables() WHERE table_name = " + d.quote(dst)).i64(0, 0) == 0)
-        db_.exec("CREATE TABLE " + dst + " AS " + sel + " LIMIT 0");
-    db_.exec("INSERT INTO " + dst + " BY NAME " + sel);
+        db_.exec("CREATE TABLE " + dst + " AS " + sel);
+    else
+        db_.exec("INSERT INTO " + dst + " BY NAME " + sel);
 
     std::string ivs;
     std::string svs;

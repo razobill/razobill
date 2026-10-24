@@ -5,8 +5,10 @@
 // across FFI boundary, buffer probing, escaping, and defensive validation
 // =============================================================================
 
+#include <atomic>
 #include <cstring>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "doctest.h"
@@ -158,7 +160,7 @@ TEST_CASE("Universal C ABI: Edge cases, empty string, errors and metadata") {
     CHECK(RzJoin(&invalidRecord, emptyBuf, sizeof(emptyBuf), &emptyLen) == RZ_ERR_INVALID_ARGUMENT);
 
     // version and ABI contract query
-    CHECK(std::string(RzVersion()) == "1.1.5");
+    CHECK(std::string(RzVersion()) == "1.1.6");
     CHECK(RzAbiVersion() == 1);
 }
 
@@ -242,5 +244,66 @@ TEST_CASE("capi: record reuse retains capacity") {
 
     RzFree(&rec);
     CHECK(rec.internalHandle == nullptr);
+}
+
+TEST_CASE("capi: RzFree safety with nullptr and zeroed record") {
+    // Calling RzFree with nullptr must not crash
+    RzFree(nullptr);
+
+    // Calling RzFree with zero-initialized record must not crash
+    RzRecord zeroRec{};
+    RzFree(&zeroRec);
+    CHECK(zeroRec.templateStr == nullptr);
+}
+
+TEST_CASE("capi: binary payload with embedded NUL roundtrips losslessly") {
+    const std::string binMsg = std::string("Header\0 data 12345 \0trailer", 27);
+
+    RzRecord rec{};
+    REQUIRE(RzSplit(binMsg.data(), binMsg.size(), &rec) == RZ_OK);
+    CHECK(rec.intCount == 1);
+    CHECK(rec.intValues[0] == 12345);
+
+    char outBuf[128];
+    size_t outLen = 0;
+    REQUIRE(RzJoin(&rec, outBuf, sizeof(outBuf), &outLen) == RZ_OK);
+    CHECK(outLen == binMsg.size());
+    CHECK(std::memcmp(outBuf, binMsg.data(), outLen) == 0);
+
+    RzFree(&rec);
+}
+
+TEST_CASE("capi: multithreaded concurrent split and join") {
+    constexpr int kNumThreads = 4;
+    constexpr int kItersPerThread = 500;
+    std::vector<std::thread> workers;
+    std::atomic<bool> allPassed{true};
+
+    for (int t = 0; t < kNumThreads; ++t) {
+        workers.emplace_back([t, &allPassed]() {
+            for (int i = 0; i < kItersPerThread; ++i) {
+                std::string msg = "Thread " + std::to_string(t) + " event " + std::to_string(i) + " status ok";
+                RzRecord rec{};
+                if (RzSplit(msg.data(), msg.size(), &rec) != RZ_OK) {
+                    allPassed = false;
+                    break;
+                }
+                char buf[256];
+                size_t outLen = 0;
+                if (RzJoin(&rec, buf, sizeof(buf), &outLen) != RZ_OK || outLen != msg.size() ||
+                    std::memcmp(buf, msg.data(), outLen) != 0) {
+                    allPassed = false;
+                    RzFree(&rec);
+                    break;
+                }
+                RzFree(&rec);
+            }
+        });
+    }
+
+    for (auto& w : workers) {
+        w.join();
+    }
+    CHECK(allPassed.load());
 }
 

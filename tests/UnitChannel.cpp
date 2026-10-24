@@ -282,3 +282,17 @@ TEST_CASE("Channel embed and decode reject non-finite and out-of-range keys and 
     CHECK(validDecode.message == 1);
 }
 
+TEST_CASE("Channel exactFailureProbability monotonicity with payload bits") {
+    std::vector<MeaningChoice> seq = {
+        MeaningChoice{0, {SynonymousOption{0, 0.5}, SynonymousOption{1, 0.5}}},
+        MeaningChoice{1, {SynonymousOption{0, 0.5}, SynonymousOption{1, 0.5}}}
+    };
+    double p1 = exactFailureProbability(seq, 1);
+    double p2 = exactFailureProbability(seq, 2);
+    double p3 = exactFailureProbability(seq, 3);
+    CHECK(p1 <= p2);
+    CHECK(p2 <= p3);
+    CHECK(p1 >= 0.0);
+    CHECK(p3 <= 1.0);
+}
+

@@ -205,11 +205,12 @@ TEST_CASE("SimdScanner: countTrailingZeros64 zero-mask safety") {
 // pins bijection join(split(x)) == x across 300,000 randomized byte runs
 TEST_CASE("property: parse then reconstruct is the identity (random structured messages)") {
     std::mt19937_64 rng(0xC0FFEE);
-    const std::string alphabet = "abcXYZ0123456789 \t=,;:()[]{}\"'<>|/._-+\xC3\xA9\xE6\x97\xA5\x0B\x1F\x7F\x80\xFF";
+    const std::string alphabet = "abcXYZ0123456789 \t\r\n\f=,;:()[]{}\"'<>|/._-+\xC3\xA9\xE6\x97\xA5\x0B\x1F\x7F\x80\xFF";
     SlotRecord s;
     std::string form, rebuilt;
     for (int iter = 0; iter < 300000; ++iter) {
-        std::string m(rng() % 64, ' ');
+        std::size_t maxLen = (iter % 100 == 0) ? 256 : 64;
+        std::string m(rng() % maxLen, ' ');
         for (auto& c : m)
             c = alphabet[rng() % alphabet.size()];
         if (iter % 997 == 0 && !m.empty()) m[rng() % m.size()] = static_cast<char>(0x11 + rng() % 3);
@@ -223,11 +224,12 @@ TEST_CASE("property: parse then reconstruct is the identity (random structured m
 // pins semantic bijection join(split(x)) == x across 300,000 random runs
 TEST_CASE("property: parse then reconstruct is the identity (random structured messages, semantic mode)") {
     std::mt19937_64 rng(0xBEEFCAFE);
-    const std::string alphabet = "abcXYZ0123456789 \t=,;:()[]{}\"'<>|/._-+\xC3\xA9\xE6\x97\xA5\x0B\x1F\x7F\x80\xFF";
+    const std::string alphabet = "abcXYZ0123456789 \t\r\n\f=,;:()[]{}\"'<>|/._-+\xC3\xA9\xE6\x97\xA5\x0B\x1F\x7F\x80\xFF";
     SlotRecord s;
     std::string form, rebuilt;
     for (int iter = 0; iter < 300000; ++iter) {
-        std::string m(rng() % 64, ' ');
+        std::size_t maxLen = (iter % 100 == 0) ? 256 : 64;
+        std::string m(rng() % maxLen, ' ');
         for (auto& c : m)
             c = alphabet[rng() % alphabet.size()];
         if (iter % 997 == 0 && !m.empty()) m[rng() % m.size()] = static_cast<char>(0x11 + rng() % 3);
@@ -253,11 +255,11 @@ TEST_CASE("semantic versioning and ABI contract") {
     auto v = razobill::version();
     CHECK(v.major == 1);
     CHECK(v.minor == 1);
-    CHECK(v.patch == 5);
+    CHECK(v.patch == 6);
     CHECK(v.abi == 1);
-    CHECK(std::string_view(v.string) == "1.1.5");
+    CHECK(std::string_view(v.string) == "1.1.6");
     CHECK(razobill::abiVersion() == 1);
-    CHECK(razobill::versionString() == "1.1.5");
+    CHECK(razobill::versionString() == "1.1.6");
 }
 
 // pins SIMD delimiter scanning on >64 byte inputs across instruction sets

@@ -170,15 +170,15 @@ py::tuple splitOne(const py::object& input, const std::string& modeStr) {
 
     if (py::isinstance<py::str>(input)) {
         // ~ surrogateescape preserves raw invalid utf-8 bytes without throwing
-        PyObject* encoded = PyUnicode_AsEncodedString(input.ptr(), "utf-8", "surrogateescape");
-        if (!encoded) throw py::error_already_set();
+        PyObject* rawEncoded = PyUnicode_AsEncodedString(input.ptr(), "utf-8", "surrogateescape");
+        if (!rawEncoded) throw py::error_already_set();
+        auto encodedBytes = py::reinterpret_steal<py::bytes>(rawEncoded);
 
-        char* buf = PyBytes_AS_STRING(encoded);
-        Py_ssize_t len = PyBytes_GET_SIZE(encoded);
+        char* buf = PyBytes_AS_STRING(encodedBytes.ptr());
+        Py_ssize_t len = PyBytes_GET_SIZE(encodedBytes.ptr());
         std::string_view sv(buf, static_cast<size_t>(len));
 
         if (sv.empty()) {
-            Py_DECREF(encoded);
             return py::make_tuple(py::str(""), py::list(), py::list());
         }
 
@@ -189,7 +189,6 @@ py::tuple splitOne(const py::object& input, const std::string& modeStr) {
             st = core::parse(sv, slots, mode);
         }
         if (st != Status::Ok) {
-            Py_DECREF(encoded);
             throw py::value_error("[razobill] What happened: Parsing failed. Why: " +
                                   std::string(razobill::describe(st)) + ". What to do: Check input data integrity.");
         }
@@ -197,7 +196,6 @@ py::tuple splitOne(const py::object& input, const std::string& modeStr) {
         PyObject* pyTmpl = PyUnicode_DecodeUTF8(slots.templateStr.data(),
                                                 static_cast<Py_ssize_t>(slots.templateStr.size()), "surrogateescape");
         if (!pyTmpl) {
-            Py_DECREF(encoded);
             throw py::error_already_set();
         }
         auto tmplObj = py::reinterpret_steal<py::object>(pyTmpl);
@@ -210,13 +208,11 @@ py::tuple splitOne(const py::object& input, const std::string& modeStr) {
         for (const auto& s : slots.strs) {
             PyObject* pyS = PyUnicode_DecodeUTF8(s.data(), static_cast<Py_ssize_t>(s.size()), "surrogateescape");
             if (!pyS) {
-                Py_DECREF(encoded);
                 throw py::error_already_set();
             }
             strList.append(py::reinterpret_steal<py::object>(pyS));
         }
 
-        Py_DECREF(encoded);
         return py::make_tuple(tmplObj, intList, strList);
     }
 

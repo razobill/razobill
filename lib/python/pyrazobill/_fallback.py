@@ -444,4 +444,9 @@ def hash(input_val: Union[str, bytes]) -> int:
 
 def version() -> str:
     """return semantic package version string matching C++ core"""
-    return "1.1.4"
+    try:
+        from pyrazobill import __version__
+
+        return __version__
+    except ImportError:
+        return "1.1.6"

@@ -34,19 +34,19 @@ from typing import Iterable, List, NamedTuple, Optional, Sequence, Union
 
 # -- dynamic library resolution on windows -------------------------------------
 
-# on windows, add package directory to DLL search path
+# on windows, add package directory to DLL search path and retain cookie references
 _pkg_dir = Path(__file__).resolve().parent
+_dll_directories = []
 if sys.platform == "win32":
-    try:
-        os.add_dll_directory(str(_pkg_dir))
-    except (AttributeError, OSError, ValueError):
-        # ignore unsupported directories or platforms without add_dll_directory
-        pass
     if hasattr(os, "add_dll_directory"):
+        try:
+            _dll_directories.append(os.add_dll_directory(str(_pkg_dir)))
+        except (AttributeError, OSError, ValueError):
+            pass
         for p in os.environ.get("PATH", "").split(os.pathsep):
             if p and os.path.isdir(p) and "mingw" in p.lower():
                 try:
-                    os.add_dll_directory(p)
+                    _dll_directories.append(os.add_dll_directory(p))
                 except (OSError, ValueError):
                     pass
 

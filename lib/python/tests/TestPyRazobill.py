@@ -285,6 +285,34 @@ class TestPyRazobill(unittest.TestCase):
         with self.assertRaises(ValueError):
             _fallback.join("slot {i}", [-1], [])
 
+    def test_native_and_fallback_hash_parity(self):
+        # verifies that native C++ RzHash matches pure-Python fallback bitwise across diverse inputs
+        samples = [
+            "",
+            "a",
+            "hello world",
+            "Failed password for root from 192.168.1.100 port 22",
+            "1234567890",
+            "Special chars: !@#$%^&*()_+-=[]{}|;':\",./<>?",
+            "Multi-byte UTF-8: 🚀 \u2603 \U0001f600 \u4e16\u754c",
+            "A" * 1024,
+            "0" * 8192,
+        ]
+        for s in samples:
+            native_val = rz.RzHash(s)
+            fallback_val = _fallback.hash(s)
+            self.assertEqual(
+                native_val,
+                fallback_val,
+                f"Hash mismatch on sample {s!r}: native={native_val} fallback={fallback_val}",
+            )
+            s_bytes = s.encode("utf-8")
+            self.assertEqual(
+                rz.RzHash(s_bytes),
+                _fallback.hash(s_bytes),
+                f"Hash mismatch on bytes {s_bytes!r}",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

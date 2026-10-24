@@ -36,6 +36,8 @@ if (repoRoot / "src").exists() and (repoRoot / "include").exists():
         thirdpartyCore.mkdir(parents=True, exist_ok=True)
         if (repoRoot / "thirdparty" / "adbc").exists():
             shutil.copytree(repoRoot / "thirdparty" / "adbc", thirdpartyCore / "adbc", dirs_exist_ok=True)
+        if (repoRoot / "thirdparty" / "duckdbcapi").exists():
+            shutil.copytree(repoRoot / "thirdparty" / "duckdbcapi", thirdpartyCore / "duckdbcapi", dirs_exist_ok=True)
     except (OSError, shutil.Error) as exc:
         # staging is best-effort when running in read-only or permission-restricted environments;
         # fall back to direct monorepo source routing if staging cannot be created
@@ -138,9 +140,8 @@ try:
             inc_dirs, lib_dirs = find_windows_sdk_dirs()
             for ext in self.extensions:
                 if compilerType == "msvc":
-                    # enable C++20, AVX2 vectorization, synchronous exceptions,
-                    # and 2^32 object sections
-                    ext.extra_compile_args.extend(["/std:c++20", "/arch:AVX2", "/EHsc", "/bigobj"])
+                    # enable C++20, synchronous exceptions, and 2^32 object sections
+                    ext.extra_compile_args.extend(["/std:c++20", "/EHsc", "/bigobj"])
                     ext.include_dirs.extend(inc_dirs)
                     ext.library_dirs.extend(lib_dirs)
                 else:
@@ -151,6 +152,16 @@ try:
                     ext.extra_compile_args.extend(compile_args)
                     if sys.platform != "win32":
                         ext.extra_link_args.append("-lpthread")
+                    else:
+                        ext.extra_link_args.extend(
+                            [
+                                "-static-libgcc",
+                                "-static-libstdc++",
+                                "-Wl,-Bstatic",
+                                "-l:libwinpthread.a",
+                                "-Wl,-Bdynamic",
+                            ]
+                        )
             try:
                 super().build_extensions()
             except Exception as exc:
@@ -175,8 +186,13 @@ except ImportError:
     extModules = []
     cmdClass = {}
 
+version_file = repoRoot / "VERSION"
+if not version_file.exists():
+    version_file = baseDir / "VERSION"
+version_str = version_file.read_text(encoding="utf-8").strip() if version_file.exists() else "1.1.6"
+
 setup(
-    version="1.1.4",
+    version=version_str,
     ext_modules=extModules,
     cmdclass=cmdClass,
 )

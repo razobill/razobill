@@ -218,19 +218,19 @@ jobs:
         run: echo "VERSION=$(cat VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
 
       - name: Download Build Artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806 # v4.1.9
         with:
           path: release-binaries
           merge-multiple: true
 
-      - name: Generate CycloneDX SBOM
+      - name: Generate Checksums
         run: |
-          pip install "cyclonedx-bom>=4.0.0"
-          mkdir -p docs/governance
-          cyclonedx-py pyproject pyproject.toml --output-format json --outfile docs/governance/SbomSpdx.json || echo '{"bomFormat":"CycloneDX","specVersion":"1.5"}' > docs/governance/SbomSpdx.json
+          cd release-binaries
+          sha256sum * > SHA256SUMS
+          cd ..
 
-      - name: Generate SLSA Attestations & Publish
-        uses: softprops/action-gh-release@v3
+      - name: Publish Release
+        uses: softprops/action-gh-release@c95fe1489396fe8a9ec87484f7466162ea69d9bb # v2.2.1
         with:
           tag_name: v${{ steps.get_version.outputs.VERSION }}
           name: librazobill v${{ steps.get_version.outputs.VERSION }}
@@ -239,7 +239,6 @@ jobs:
           prerelease: false
           files: |
             release-binaries/*
-            docs/governance/SbomSpdx.json
 
   publish-pypi:
     name: Build & Publish to PyPI

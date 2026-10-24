@@ -182,7 +182,11 @@ int main(int argc, char** argv) {
         RzRecord r{};
         (void)RzSplit(m.data(), m.size(), &r);
         std::size_t outLen = 0;
-        (void)RzJoin(&r, buffer, sizeof(buffer), &outLen);
+        RzStatus st = RzJoin(&r, buffer, sizeof(buffer), &outLen);
+        if (st == RZ_ERR_BUFFER_TOO_SMALL && outLen > sizeof(buffer)) {
+            std::vector<char> dynBuf(outLen);
+            (void)RzJoin(&r, dynBuf.data(), dynBuf.size(), &outLen);
+        }
         RzFree(&r);
         return outLen;
     });
@@ -190,7 +194,11 @@ int main(int argc, char** argv) {
     // 7. Universal C ABI: RzTemplate
     timeOperation("C ABI RzTemplate", [&](const std::string& m) {
         std::size_t outLen = 0;
-        (void)RzTemplate(m.data(), m.size(), buffer, sizeof(buffer), &outLen);
+        RzStatus st = RzTemplate(m.data(), m.size(), buffer, sizeof(buffer), &outLen);
+        if (st == RZ_ERR_BUFFER_TOO_SMALL && outLen > sizeof(buffer)) {
+            std::vector<char> dynBuf(outLen);
+            (void)RzTemplate(m.data(), m.size(), dynBuf.data(), dynBuf.size(), &outLen);
+        }
         return outLen;
     });
 

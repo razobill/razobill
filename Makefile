@@ -18,7 +18,10 @@ USE_UNSTABLE_C_API=0
 
 # Target DuckDB C API baseline version for ABI metadata
 TARGET_DUCKDB_VERSION=v1.5.6
-EXTENSION_VERSION=v1.1.4
+EXTENSION_VERSION?=v$(shell cat VERSION 2>/dev/null | tr -d '[:space:]')
+ifeq ($(strip $(EXTENSION_VERSION)),v)
+EXTENSION_VERSION=v1.1.6
+endif
 
 # Pass build flag to build only the extension in CI
 CMAKE_EXTRA_BUILD_FLAGS=-DRAZOBILL_BUILD_EXT_ONLY=ON

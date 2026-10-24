@@ -75,21 +75,21 @@ jobs:
 
       - name: Install Python Package (Native C++ Engine)
         run: |
-          pip install -e .
+          pip install -e lib/python
         env:
-          RZB_REQUIRE_NATIVE: "1"
+          PYRAZOBILL_REQUIRE_NATIVE: "1"
 
       - name: Run Python Unit Test Suite
         run: |
           python -m unittest discover -s lib/python/tests
         env:
-          RZB_REQUIRE_NATIVE: "1"
+          PYRAZOBILL_REQUIRE_NATIVE: "1"
 
       - name: Run Python Property-Based Test Suite (Hypothesis)
         run: |
           python -m pytest lib/python/tests/TestProperties.py
         env:
-          RZB_REQUIRE_NATIVE: "1"
+          PYRAZOBILL_REQUIRE_NATIVE: "1"
 
   avx512-emulation:
     name: AVX-512 Vectorization Emulation (Intel SDE)
@@ -186,7 +186,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version-file: ext/otel/go.mod
           cache-dependency-path: ext/otel/go.sum
 
       - name: Build C++ Universal C ABI Shared Library
@@ -218,3 +218,37 @@ jobs:
       - name: Run Cargo Test
         run: |
           LD_LIBRARY_PATH=$PWD/build cargo test --manifest-path ext/vector/Cargo.toml --verbose
+
+  lint-and-docs:
+    name: Markdown Lint, Doc Verification & Ruff
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Tree
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run markdownlint-cli2
+        run: |
+          npx --yes markdownlint-cli2 "**/*.md"
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Run Ruff Linter
+        run: |
+          pip install --upgrade ruff
+          ruff check lib/python tools/
+
+      - name: Run Style and Banned Words Linter
+        run: |
+          python tools/LintDocs.py README.md CONTRIBUTING.md docs/
+
+      - name: Run Internal Documentation Link Verifier
+        run: |
+          python tools/VerifyMarkdownLinks.py

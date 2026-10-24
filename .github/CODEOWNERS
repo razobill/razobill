@@ -1,0 +1,25 @@
+# =============================================================================
+# Code Owners for Razobill
+# =============================================================================
+
+# Global repository owners
+* @4t1a
+
+# Core C++ engine and ABI
+/include/ @4t1a
+/src/ @4t1a
+
+# Language bindings and extensions
+/lib/python/ @4t1a
+/ext/duckdb/ @4t1a
+/ext/otel/ @4t1a
+/ext/vector/ @4t1a
+
+# CI/CD and release infrastructure
+/.github/ @4t1a
+/tools/ @4t1a
+/CMakeLists.txt @4t1a
+/Makefile @4t1a
+
+# Documentation
+/docs/ @4t1a

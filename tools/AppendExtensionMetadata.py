@@ -42,6 +42,10 @@ def padded_byte_string(input):
     out: exactly 32 bytes padded with null bytes
     """
     encoded_string = input.encode("ascii")
+    if len(encoded_string) > 32:
+        raise ValueError(
+            f"Metadata field '{input}' exceeds DuckDB 32-byte header limit (got {len(encoded_string)} bytes)"
+        )
     encoded_string += b"\x00" * (32 - len(encoded_string))
     return encoded_string
 

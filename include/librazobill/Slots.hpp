@@ -111,4 +111,7 @@ using Slots = SlotRecord;
     return templateOf(form, out);
 }
 
+/// detects whether form string uses legacy skeleton and type suffix encoding
+[[nodiscard]] bool isLegacyFormKey(std::string_view form) noexcept;
+
 } // namespace razobill::core

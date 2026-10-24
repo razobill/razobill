@@ -46,10 +46,15 @@ constexpr std::size_t digits10(std::int64_t v) noexcept {
     return 20 + sign;
 }
 
+} // namespace
+
 /// detects whether form string uses legacy skeleton and type suffix encoding
 /// in: form is raw form key representation
-/// out: true if legacy wire format (placeholder 0x11 and type separator 0x12)
+/// out: true if legacy wire format (placeholder 0x12 and type separator 0x13)
 bool isLegacyFormKey(std::string_view form) noexcept {
+    if (form.find(static_cast<char>(kEscapePrefix)) != std::string_view::npos) {
+        return false;
+    }
     if (form.find("{i}") != std::string_view::npos || form.find("{s}") != std::string_view::npos ||
         form.find("{{") != std::string_view::npos || form.find("}}") != std::string_view::npos) {
         return false;
@@ -70,6 +75,9 @@ bool isLegacyFormKey(std::string_view form) noexcept {
     }
     return placeholders > 0 && placeholders == types.size();
 }
+
+namespace {
+
 
 /// separates legacy form key into skeleton, type tags, and slot counts
 /// in: form contains single kTypeSeparator byte followed by 'I' and 'S' tags
@@ -188,6 +196,16 @@ Status reconstructNew(std::string_view tmpl, std::span<const std::int64_t> ints,
             } else {
                 return Status::Malformed;
             }
+        } else if (static_cast<unsigned char>(*p) == kEscapePrefix) {
+            if (p + 1 < end && (static_cast<unsigned char>(*(p + 1)) == kEscapePrefix ||
+                                static_cast<unsigned char>(*(p + 1)) == kPlaceholder ||
+                                static_cast<unsigned char>(*(p + 1)) == kTypeSeparator)) {
+                estSize += 1;
+                p += 2;
+            } else {
+                estSize += 1;
+                p += 1;
+            }
         } else {
             estSize += 1;
             p += 1;
@@ -244,6 +262,17 @@ Status reconstructNew(std::string_view tmpl, std::span<const std::int64_t> ints,
             } else {
                 ++p;
             }
+        } else if (static_cast<unsigned char>(*p) == kEscapePrefix) {
+            if (p + 1 < end && (static_cast<unsigned char>(*(p + 1)) == kEscapePrefix ||
+                                static_cast<unsigned char>(*(p + 1)) == kPlaceholder ||
+                                static_cast<unsigned char>(*(p + 1)) == kTypeSeparator)) {
+                if (p > literalStart) out.append(literalStart, static_cast<std::size_t>(p - literalStart));
+                out.push_back(*(p + 1));
+                p += 2;
+                literalStart = p;
+            } else {
+                ++p;
+            }
         } else {
             ++p;
         }
@@ -272,19 +301,27 @@ Status parse(std::string_view msg, SlotRecord& out, ScanMode mode) {
     out.templateStr.reserve(msg.size() + 16);
     out.skeleton.reserve(msg.size() + 16);
 
+    const auto appendEscaped = [&out](std::string_view s) {
+        for (char c : s) {
+            const auto uc = static_cast<unsigned char>(c);
+            if (c == '{')
+                out.templateStr.append("{{");
+            else if (c == '}')
+                out.templateStr.append("}}");
+            else if (uc == kEscapePrefix || uc == kPlaceholder || uc == kTypeSeparator) {
+                out.templateStr.push_back(static_cast<char>(kEscapePrefix));
+                out.templateStr.push_back(c);
+            } else
+                out.templateStr.push_back(c);
+        }
+    };
+
     const auto result = scan(
         msg,
-        [&out](std::string_view gap, std::string_view tok) {
+        [&out, &appendEscaped](std::string_view gap, std::string_view tok) {
             out.skeleton.append(gap);
             out.skeleton.push_back(static_cast<char>(kPlaceholder));
-            for (char c : gap) {
-                if (c == '{')
-                    out.templateStr.append("{{");
-                else if (c == '}')
-                    out.templateStr.append("}}");
-                else
-                    out.templateStr.push_back(c);
-            }
+            appendEscaped(gap);
             // leading zeros (e.g. "007") stay strings to prevent byte loss
             if (isIntToken(tok)) {
                 std::int64_t v = 0;
@@ -301,14 +338,7 @@ Status parse(std::string_view msg, SlotRecord& out, ScanMode mode) {
         mode);
 
     out.skeleton.append(result.tail);
-    for (char c : result.tail) {
-        if (c == '{')
-            out.templateStr.append("{{");
-        else if (c == '}')
-            out.templateStr.append("}}");
-        else
-            out.templateStr.push_back(c);
-    }
+    appendEscaped(result.tail);
 
     // control characters 0x11..0x13 in payload invalidate legacy wire format
     if (result.reserved) {
@@ -357,11 +387,6 @@ Status templateOf(std::string_view form, std::string& out) {
         return Status::Ok;
     }
 
-    if (form.find(static_cast<char>(kTypeSeparator)) != std::string_view::npos ||
-        form.find(static_cast<char>(kPlaceholder)) != std::string_view::npos) {
-        return Status::Malformed;
-    }
-
     out.clear();
     out.reserve(form.size());
 
@@ -388,6 +413,18 @@ Status templateOf(std::string_view form, std::string& out) {
                 out.clear();
                 return Status::Malformed;
             }
+        } else if (static_cast<unsigned char>(*p) == kEscapePrefix) {
+            if (p + 1 < end && (static_cast<unsigned char>(*(p + 1)) == kEscapePrefix ||
+                                static_cast<unsigned char>(*(p + 1)) == kPlaceholder ||
+                                static_cast<unsigned char>(*(p + 1)) == kTypeSeparator)) {
+                out.push_back(*(p + 1));
+                p += 2;
+            } else {
+                out.push_back(*p++);
+            }
+        } else if (static_cast<unsigned char>(*p) == kPlaceholder || static_cast<unsigned char>(*p) == kTypeSeparator) {
+            out.clear();
+            return Status::Malformed;
         } else {
             out.push_back(*p++);
         }

@@ -20,11 +20,14 @@ namespace razobill::core {
 // -- control framing bytes and scanning modes ---------------------------------
 
 /// ASCII control bytes used for internal form key framing
+/// 0x11 (Device Control 1) prefixes escaped control bytes (0x11, 0x12, 0x13)
 /// 0x12 (Device Control 2) marks variable slots in skeleton strings
 /// 0x13 (Device Control 3) separates skeleton string from type signature
 /// non-printable control bytes eliminate collision with literal '{}' or '<*>'
+inline constexpr unsigned char kEscapePrefix = 0x11;
 inline constexpr unsigned char kPlaceholder = 0x12;
 inline constexpr unsigned char kTypeSeparator = 0x13;
+
 
 /// maximum allowed message size (16 MB)
 inline constexpr std::size_t kMaxMessageBytes = std::size_t{16} << 20;

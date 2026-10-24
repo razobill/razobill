@@ -419,3 +419,24 @@ TEST_CASE("Dialect: quoting and SQL expression generation (DuckDB & ClickHouse)"
     CHECK(duck->supportsCompact() == true);
     CHECK(ch->supportsCompact() == false);
 }
+
+TEST_CASE("core: adversarial control byte format ambiguity round-trip") {
+    const std::vector<std::string> hostile = {
+        std::string("x\x12\x13I"),
+        std::string("a\x12" "b\x12" "c\x13IS"),
+        std::string("prefix\x11\x12\x13suffix"),
+        std::string("\x11\x11"),
+        std::string("\x12\x13I")
+    };
+    for (const auto& msg : hostile) {
+        SlotRecord r;
+        REQUIRE(parse(msg, r, ScanMode::Semantic) == Status::Ok);
+        CHECK(!isLegacyFormKey(r.templateStr));
+        std::string rec;
+        REQUIRE(reconstruct(r.templateStr, r.ints, r.strs, rec) == Status::Ok);
+        CHECK(rec == msg);
+        std::string display;
+        CHECK(templateOf(r.templateStr, display) == Status::Ok);
+    }
+}
+

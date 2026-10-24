@@ -44,9 +44,12 @@ typedef struct RzRecord {
 
 #### Memory ownership contract
 
-1. **Zero-copy string views**: Pointers in `strValues` borrow directly from the caller's input `message` buffer. The source buffer must remain valid and unmodified while `strValues` is accessed.
-2. **Deallocation**: Caller must pass `outRecord` to `RzFree` when finished to release arrays allocated for `templateStr` and `intValues`.
-3. **Manual initialization**: Foreign callers may manually construct an `RzRecord` with `internalHandle = NULL` to call `RzJoin`.
+1. **Zero-initialization**: Callers must zero-initialize `RzRecord rec = {0};` before passing it to `RzSplit`. If `rec.internalHandle` is non-NULL from an earlier `RzSplit` call, `RzSplit` safely reuses the allocated capacity without reallocating.
+2. **Shallow-copy hazard**: `RzRecord` owns heap-allocated metadata via `internalHandle`. Copying `RzRecord` by value (shallow copy) causes a double-free hazard if both copies are passed to `RzFree`. Always pass `RzRecord` by pointer, or move and zero the source record.
+3. **8-byte integer alignment**: The `intValues` pointer must refer to 8-byte aligned memory (`alignof(int64_t)`).
+4. **Zero-copy string views**: Pointers in `strValues` borrow directly from the caller's input `message` buffer. The source buffer must remain valid and unmodified while `strValues` is accessed.
+5. **Deallocation**: Caller must pass `outRecord` to `RzFree` when finished to release arrays allocated for `templateStr` and `intValues`.
+6. **Manual initialization and bounds**: Foreign callers may manually construct an `RzRecord` with `internalHandle = NULL` to call `RzJoin`. Manual records must satisfy `templateLength <= 16 MiB`, `intCount <= templateLength/3 + 1`, `strCount <= templateLength/3 + 1`, and `strLengths[i] <= 16 MiB`. Violations return `RZ_ERR_MESSAGE_TOO_LARGE` or `RZ_ERR_COUNT_MISMATCH`.
 
 ### RzStatus
 
@@ -101,7 +104,7 @@ RZ_API RzStatus RzSplit(const char* message, size_t messageLength, RzRecord* out
 #include <string.h>
 
 const char* msg = "Failed password for root from 192.168.1.100 port 22";
-RzRecord record;
+RzRecord record = {0};
 if (RzSplit(msg, strlen(msg), &record) == RZ_OK) {
     printf("Template: %.*s\n", (int)record.templateLength, record.templateStr);
     RzFree(&record);

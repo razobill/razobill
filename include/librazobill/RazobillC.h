@@ -31,7 +31,27 @@
 // - Literal braces in message text are escaped to {{ and }} in the template.
 //
 // MEMORY OWNERSHIP AND LIFETIMES:
-// - Borrowed string views: pointers in outRecord->strValues point directly into
+// - Zero-initialization: Callers must zero-initialize RzRecord (e.g.
+//   RzRecord rec = {0};) before passing it to RzSplit. If rec.internalHandle
+//   is non-NULL from a previous RzSplit call, RzSplit safely reuses the allocated
+//   backing capacity without reallocating.
+// - Shallow-copy hazard: RzRecord owns heap-allocated metadata via internalHandle.
+//   Copying RzRecord by value (shallow copy) causes a double-free hazard if both
+//   copies are passed to RzFree. Always pass RzRecord by pointer, or move and zero
+//   the source record.
+// - Alignment requirement: intValues must point to 8-byte aligned memory
+//   (alignof(int64_t)).
+// - Sizing and error semantics: *outLength receives the required buffer length
+//   both on RZ_OK and when returning RZ_ERR_BUFFER_TOO_SMALL.
+// - Manual records: Foreign language runtimes (Go, Rust, Python ctypes) may
+//   allocate an RzRecord with internalHandle = NULL and populate it directly
+//   for RzJoin. Manual records must satisfy:
+//     * templateLength <= 16 MiB (kMaxMessageBytes)
+//     * intCount <= (templateLength / 3) + 1
+//     * strCount <= (templateLength / 3) + 1
+//     * strLengths[i] <= 16 MiB
+//   Violations return RZ_ERR_MESSAGE_TOO_LARGE or RZ_ERR_COUNT_MISMATCH.
+// - Borrowed string views: Pointers in outRecord->strValues point directly into
 //   the caller's input message buffer. The input buffer must outlive outRecord.
 // - Heap allocation: RzSplit allocates internal buffers (templateStr,
 //   intValues, strValues, strLengths). The caller must release them via
@@ -40,9 +60,6 @@
 //   buffer (outBuffer) without appending a trailing NUL byte. If bufferCapacity
 //   is insufficient, RZ_ERR_BUFFER_TOO_SMALL is returned and *outLength
 //   receives the required size.
-// - Manual records: foreign language runtimes (Go, Rust, Python ctypes) may
-//   allocate an RzRecord with internalHandle = NULL and populate it directly
-//   for RzJoin.
 //
 // CONCURRENCY & THREAD SAFETY:
 // All functions are reentrant and stateless. Concurrent calls operating on
@@ -199,7 +216,7 @@ RZ_API void RzFree(RzRecord* record);
 RZ_API const char* RzStatusMessage(RzStatus status);
 
 /**
- * Returns the runtime library semantic version string (e.g. "1.1.4").
+ * Returns the runtime library semantic version string (e.g. "1.1.6").
  *
  * out: pointer to static constant NUL-terminated string
  * own: static storage
@@ -214,6 +231,10 @@ RZ_API const char* RzVersion(void);
  * thread: reentrant
  */
 RZ_API int RzAbiVersion(void);
+
+#if defined(__cplusplus)
+static_assert(RZ_ABI_VERSION == 1, "Universal C ABI version mismatch");
+#endif
 
 #ifdef __cplusplus
 }

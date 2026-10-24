@@ -81,7 +81,7 @@ jobs:
 
       - name: Run Python Unit Test Suite
         run: |
-          python -m unittest discover -s lib/python/tests
+          python -m unittest discover -s lib/python/tests -p "Test*.py"
         env:
           PYRAZOBILL_REQUIRE_NATIVE: "1"
 
@@ -279,12 +279,16 @@ jobs:
       - name: Execute BenchCore (Receipts Only, No Gating)
         shell: bash
         run: |
-          if [ -f "./build/BenchCore" ]; then
-            ./build/BenchCore logs/SSH/SSH.log 50000
-          elif [ -f "./build/BenchCore.exe" ]; then
-            ./build/BenchCore.exe logs/SSH/SSH.log 50000
-          elif [ -f "./build/Release/BenchCore.exe" ]; then
-            ./build/Release/BenchCore.exe logs/SSH/SSH.log 50000
+          if [ -f "logs/SSH/SSH.log" ]; then
+            if [ -f "./build/BenchCore" ]; then
+              ./build/BenchCore logs/SSH/SSH.log 50000
+            elif [ -f "./build/BenchCore.exe" ]; then
+              ./build/BenchCore.exe logs/SSH/SSH.log 50000
+            elif [ -f "./build/Release/BenchCore.exe" ]; then
+              ./build/Release/BenchCore.exe logs/SSH/SSH.log 50000
+            fi
+          else
+            echo "Skipping bench: logs/SSH/SSH.log dataset not bundled in checkout"
           fi
 
   test-mingw:
@@ -297,18 +301,15 @@ jobs:
       - name: Set up MSYS2 MinGW-w64
         uses: msys2/setup-msys2@v2
         with:
-          msystem: MINGW64
+          msystem: UCRT64
           update: true
           install: >-
             git
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-ninja
-            mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-python
-            mingw-w64-x86_64-python-pip
-            mingw-w64-x86_64-python-pybind11
-            mingw-w64-x86_64-python-pytest
-            mingw-w64-x86_64-python-hypothesis
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-python
+            mingw-w64-ucrt-x86_64-python-pip
 
       - name: Build C++ Core and Unit Tests under MinGW-w64
         shell: msys2 {0}
@@ -324,10 +325,11 @@ jobs:
       - name: Install Python Package under MinGW
         shell: msys2 {0}
         run: |
+          pip install --upgrade pip pybind11 pytest hypothesis
           pip install -e lib/python
 
       - name: Run Python Tests under MinGW
         shell: msys2 {0}
         run: |
-          python -m unittest discover -s lib/python/tests
+          python -m unittest discover -s lib/python/tests -p "Test*.py"
           python -m pytest lib/python/tests/TestProperties.py

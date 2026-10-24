@@ -11,6 +11,7 @@
 #include <dlfcn.h>
 #endif
 
+#include <bit>
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -21,6 +22,9 @@
 #include "adbc.h"
 #include "librazobill/Backend.hpp"
 #include "librazobill/Lifetime.hpp"
+
+static_assert(std::endian::native == std::endian::little,
+              "librazobill ADBC driver requires little-endian architecture");
 
 namespace razobill {
 
@@ -111,7 +115,7 @@ const std::uint8_t* validity(const ArrowArray* a) {
 
 /// test validity bit for row index i; null buffer implies all rows valid
 bool isValid(const ArrowArray* a, std::int64_t i) {
-    if (!a || i < 0 || i >= a->length) return false;
+    if (!a || i < 0 || i >= a->length || a->offset < 0) return false;
     const auto* v = validity(a);
     const auto k = static_cast<std::uint64_t>(i + a->offset);
     return v == nullptr || (((static_cast<unsigned int>(v[k >> 3U]) >> (k & 7U)) & 1U) != 0U);
@@ -119,7 +123,7 @@ bool isValid(const ArrowArray* a, std::int64_t i) {
 
 /// read scalar value of type T from primary data buffer (buffer index 1)
 template <class T> T at(const ArrowArray* a, std::int64_t i) {
-    if (!a || a->n_buffers < 2 || !a->buffers[1]) return T{};
+    if (!a || a->n_buffers < 2 || !a->buffers[1] || i < 0 || i >= a->length || a->offset < 0) return T{};
     return static_cast<const T*>(a->buffers[1])[i + a->offset];
 }
 
@@ -142,13 +146,13 @@ Value decode(const char* fmt, const ArrowArray* a, std::int64_t i) {
     if (!std::strcmp(fmt, "g")) return at<double>(a, i);
     if (!std::strcmp(fmt, "f")) return static_cast<double>(at<float>(a, i));
     if (!std::strcmp(fmt, "b")) {
-        if (!a || a->n_buffers < 2 || !a->buffers[1]) return static_cast<std::int64_t>(0);
+        if (!a || a->n_buffers < 2 || !a->buffers[1] || a->offset < 0) return static_cast<std::int64_t>(0);
         const auto k = static_cast<std::uint64_t>(i + a->offset);
         return static_cast<std::int64_t>(
             ((static_cast<unsigned int>(static_cast<const std::uint8_t*>(a->buffers[1])[k >> 3U]) >> (k & 7U)) & 1U));
     }
     if (!std::strncmp(fmt, "d:", 2)) {
-        if (!a || a->n_buffers < 2 || !a->buffers[1]) return 0.0;
+        if (!a || a->n_buffers < 2 || !a->buffers[1] || a->offset < 0) return 0.0;
         int precision = 0;
         int scale = 0;
         int bits = 128;
@@ -177,18 +181,20 @@ Value decode(const char* fmt, const ArrowArray* a, std::int64_t i) {
         return v;
     }
     if (!std::strcmp(fmt, "u")) {
-        if (!a || a->n_buffers < 2 || !a->buffers[1]) return std::string{};
+        if (!a || a->n_buffers < 2 || !a->buffers[1] || a->offset < 0) return std::string{};
         const auto* off = static_cast<const std::int32_t*>(a->buffers[1]) + a->offset;
-        if (off[i] < 0 || off[i + 1] <= off[i]) return std::string{};
+        if (off[i] < 0 || off[i + 1] < off[i]) return std::string{};
         const auto len = static_cast<std::size_t>(off[i + 1] - off[i]);
+        if (len == 0) return std::string{};
         if (a->n_buffers < 3 || !a->buffers[2]) return std::string{};
         return std::string(static_cast<const char*>(a->buffers[2]) + off[i], len);
     }
     if (!std::strcmp(fmt, "U")) {
-        if (!a || a->n_buffers < 2 || !a->buffers[1]) return std::string{};
+        if (!a || a->n_buffers < 2 || !a->buffers[1] || a->offset < 0) return std::string{};
         const auto* off = static_cast<const std::int64_t*>(a->buffers[1]) + a->offset;
-        if (off[i] < 0 || off[i + 1] <= off[i]) return std::string{};
+        if (off[i] < 0 || off[i + 1] < off[i]) return std::string{};
         const auto len = static_cast<std::size_t>(off[i + 1] - off[i]);
+        if (len == 0) return std::string{};
         if (a->n_buffers < 3 || !a->buffers[2]) return std::string{};
         return std::string(static_cast<const char*>(a->buffers[2]) + off[i], len);
     }
@@ -283,9 +289,6 @@ private:
         const std::string q(sql);
         if (driver_.StatementSetSqlQuery(&st, q.c_str(), &err) != ADBC_STATUS_OK) fail("SetSqlQuery", err);
         ArrowArrayStream stream{};
-        std::int64_t rows = -1;
-        if (driver_.StatementExecuteQuery(&st, &stream, &rows, &err) != ADBC_STATUS_OK)
-            fail("ExecuteQuery [" + q.substr(0, 160) + "]", err);
         struct StreamGuard {
             ArrowArrayStream* s{nullptr};
             explicit StreamGuard(ArrowArrayStream* s_in RZ_LIFETIMEBOUND) noexcept : s(s_in) {}
@@ -297,6 +300,9 @@ private:
                 if (s && s->release) s->release(s);
             }
         } sg(&stream);
+        std::int64_t rows = -1;
+        if (driver_.StatementExecuteQuery(&st, &stream, &rows, &err) != ADBC_STATUS_OK)
+            fail("ExecuteQuery [" + q.substr(0, 160) + "]", err);
         if (!stream.release) return;
         ArrowSchema schema{};
         if (stream.get_schema(&stream, &schema) != 0) throw BackendError("cannot read result schema");
@@ -311,9 +317,14 @@ private:
                 if (s && s->release) s->release(s);
             }
         } schg(&schema);
+        if (schema.n_children < 0 || (schema.n_children > 0 && !schema.children)) {
+            throw BackendError("invalid ArrowSchema children");
+        }
         if (out) {
-            for (std::int64_t c = 0; c < schema.n_children; ++c)
+            for (std::int64_t c = 0; c < schema.n_children; ++c) {
+                if (!schema.children[c]) throw BackendError("null ArrowSchema child at index " + std::to_string(c));
                 out->names.emplace_back(schema.children[c]->name ? schema.children[c]->name : "");
+            }
         }
         for (;;) {
             ArrowArray batch{};
@@ -331,9 +342,18 @@ private:
                 }
             } bg(&batch);
             if (!out) continue;
-            if (batch.n_children < schema.n_children) {
+            if (batch.n_children != schema.n_children) {
                 throw BackendError("Arrow batch n_children (" + std::to_string(batch.n_children) +
-                                   ") less than schema n_children (" + std::to_string(schema.n_children) + ")");
+                                   ") does not match schema n_children (" + std::to_string(schema.n_children) + ")");
+            }
+            if (batch.n_children > 0 && !batch.children) {
+                throw BackendError("null ArrowArray children pointer");
+            }
+            for (std::int64_t c = 0; c < schema.n_children; ++c) {
+                if (!batch.children[c]) throw BackendError("null ArrowArray child at index " + std::to_string(c));
+                if (batch.children[c]->offset < 0 || batch.children[c]->length < 0) {
+                    throw BackendError("invalid offset or length in ArrowArray child at index " + std::to_string(c));
+                }
             }
             for (std::int64_t r = 0; r < batch.length; ++r) {
                 std::vector<Value> row;
@@ -386,7 +406,8 @@ private:
 };
 
 template <class T> const T& get(const Table& t, std::size_t r, std::size_t c, const char* want) {
-    const auto& v = t.rows.at(r).at(c);
+    if (r >= t.rows.size() || c >= t.rows[r].size()) throw BackendError("row or column index out of range");
+    const auto& v = t.rows[r][c];
     if (const auto* p = std::get_if<T>(&v)) return *p;
     throw BackendError(std::string("result cell is not ") + want);
 }
@@ -396,19 +417,22 @@ template <class T> const T& get(const Table& t, std::size_t r, std::size_t c, co
 // -- table accessors and factory ----------------------------------------------
 
 std::int64_t Table::i64(std::size_t r, std::size_t c) const {
-    const auto& v = rows.at(r).at(c);
+    if (r >= rows.size() || c >= rows[r].size()) throw BackendError("row or column index out of range");
+    const auto& v = rows[r][c];
     if (const auto* p = std::get_if<std::int64_t>(&v)) return *p;
     if (const auto* u = std::get_if<std::uint64_t>(&v)) return static_cast<std::int64_t>(*u);
     throw BackendError("result cell is not an integer");
 }
 std::uint64_t Table::u64(std::size_t r, std::size_t c) const {
-    const auto& v = rows.at(r).at(c);
+    if (r >= rows.size() || c >= rows[r].size()) throw BackendError("row or column index out of range");
+    const auto& v = rows[r][c];
     if (const auto* p = std::get_if<std::uint64_t>(&v)) return *p;
     if (const auto* i = std::get_if<std::int64_t>(&v)) return static_cast<std::uint64_t>(*i);
     throw BackendError("result cell is not an integer");
 }
 double Table::f64(std::size_t r, std::size_t c) const {
-    const auto& v = rows.at(r).at(c);
+    if (r >= rows.size() || c >= rows[r].size()) throw BackendError("row or column index out of range");
+    const auto& v = rows[r][c];
     if (const auto* p = std::get_if<double>(&v)) return *p;
     if (const auto* i = std::get_if<std::int64_t>(&v)) return static_cast<double>(*i);
     if (const auto* u = std::get_if<std::uint64_t>(&v)) return static_cast<double>(*u);

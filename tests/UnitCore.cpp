@@ -440,3 +440,31 @@ TEST_CASE("core: adversarial control byte format ambiguity round-trip") {
     }
 }
 
+TEST_CASE("table: accessors bounds checking and BackendError") {
+    Table t;
+    t.names = {"id", "val", "label"};
+    t.rows = {
+        {std::int64_t(42), double(3.14), std::string("test")},
+        {std::monostate{}, std::uint64_t(100), std::monostate{}}
+    };
+
+    CHECK(t.i64(0, 0) == 42);
+    CHECK(t.f64(0, 1) == 3.14);
+    CHECK(t.str(0, 2) == "test");
+    CHECK(!t.isNull(0, 0));
+    CHECK(t.isNull(1, 0));
+    CHECK(t.u64(1, 1) == 100);
+
+    // Uniform BackendError on out of range
+    CHECK_THROWS_AS((void)t.i64(2, 0), BackendError);
+    CHECK_THROWS_AS((void)t.i64(0, 5), BackendError);
+    CHECK_THROWS_AS((void)t.u64(5, 0), BackendError);
+    CHECK_THROWS_AS((void)t.f64(0, 9), BackendError);
+    CHECK_THROWS_AS((void)t.str(9, 9), BackendError);
+    CHECK_THROWS_AS((void)t.isNull(9, 0), BackendError);
+
+    // Type mismatch error
+    CHECK_THROWS_AS((void)t.str(0, 0), BackendError);
+    CHECK_THROWS_AS((void)t.i64(0, 2), BackendError);
+}
+

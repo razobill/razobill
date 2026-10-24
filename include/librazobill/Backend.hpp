@@ -45,7 +45,8 @@ struct Table {
     [[nodiscard]] double f64(std::size_t r, std::size_t c) const;
     [[nodiscard]] const std::string& str(std::size_t r, std::size_t c) const;
     [[nodiscard]] bool isNull(std::size_t r, std::size_t c) const {
-        return std::holds_alternative<std::monostate>(rows.at(r).at(c));
+        if (r >= rows.size() || c >= rows[r].size()) throw BackendError("row or column index out of range");
+        return std::holds_alternative<std::monostate>(rows[r][c]);
     }
     [[nodiscard]] bool is_null(std::size_t r, std::size_t c) const { return isNull(r, c); }
 };

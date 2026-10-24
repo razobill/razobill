@@ -252,3 +252,82 @@ jobs:
       - name: Run Internal Documentation Link Verifier
         run: |
           python tools/VerifyMarkdownLinks.py
+
+  benchmark-receipts:
+    name: Benchmark Receipts (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, macos-latest]
+    steps:
+      - name: Checkout Source Tree
+        uses: actions/checkout@v7
+
+      - name: Set up MSVC Compiler
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build Core Benchmark Target
+        run: |
+          ninja -C build BenchCore
+
+      - name: Execute BenchCore (Receipts Only, No Gating)
+        shell: bash
+        run: |
+          if [ -f "./build/BenchCore" ]; then
+            ./build/BenchCore logs/SSH/SSH.log 50000
+          elif [ -f "./build/BenchCore.exe" ]; then
+            ./build/BenchCore.exe logs/SSH/SSH.log 50000
+          elif [ -f "./build/Release/BenchCore.exe" ]; then
+            ./build/Release/BenchCore.exe logs/SSH/SSH.log 50000
+          fi
+
+  test-mingw:
+    name: MinGW-w64 Windows Tests (GCC / Python)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Source Tree
+        uses: actions/checkout@v7
+
+      - name: Set up MSYS2 MinGW-w64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            git
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-python
+            mingw-w64-x86_64-python-pip
+            mingw-w64-x86_64-python-pybind11
+            mingw-w64-x86_64-python-pytest
+            mingw-w64-x86_64-python-hypothesis
+
+      - name: Build C++ Core and Unit Tests under MinGW-w64
+        shell: msys2 {0}
+        run: |
+          cmake -B build-mingw -G Ninja -DCMAKE_BUILD_TYPE=Release
+          ninja -C build-mingw UnitTests
+
+      - name: Run C++ Unit Tests under MinGW
+        shell: msys2 {0}
+        run: |
+          ./build-mingw/UnitTests.exe
+
+      - name: Install Python Package under MinGW
+        shell: msys2 {0}
+        run: |
+          pip install -e lib/python
+
+      - name: Run Python Tests under MinGW
+        shell: msys2 {0}
+        run: |
+          python -m unittest discover -s lib/python/tests
+          python -m pytest lib/python/tests/TestProperties.py

@@ -28,7 +28,7 @@ Every Razobill component is assigned one of three maturity levels:
 | **macOS** (11.0+) | Apple Silicon (`arm64`), Intel (`x86_64`) | Stable | Stable | Stable |
 | **Windows** (10+) | `x86_64` (MSVC) | Stable | Stable | Stable |
 | **WebAssembly** | `wasm32-emscripten` | Unsupported | Unsupported | Excluded |
-| **Windows MinGW** | `x86_64` | Experimental | Source (`sdist`) | Excluded |
+| **Windows MinGW** | `x86_64` | Stable | Source (`sdist`) | Excluded |
 
 ---
 

@@ -464,6 +464,22 @@ The audit confirmed and resolved ~60 specific code-level findings across seven w
 
 ---
 
+## Limits ledger (Round 2 audit of known boundaries)
+
+The seven operational limits documented in `docs/explanation/limits.md` were formally audited and addressed in Round 2:
+
+| Limit | Title | Classification | Action / Mathematical Receipt |
+| :--- | :--- | :--- | :--- |
+| **#1** | Clustering tool / minimal templates | Partially-closed / Fundamental-by-design | Multi-line context bleed (`for\n\nalice`) fixed by resetting delimiter context across newlines. Higher cardinality than Drain3 is mathematically required by the exact lossless invertibility invariant $join(split(x)) == x$. |
+| **#2** | Author-run benchmark measurements | Closed-by-fix | Automated continuous CI benchmark matrix added to `.github/workflows/CI.yml` (`benchmark-receipts` job for Ubuntu x86-64, Ubuntu ARM64, Windows MSVC, macOS) running `BenchCore` for reproducible cloud receipts. |
+| **#3** | S3 cost models reliance on emulation | Closed-by-fix | Added explicit S3 request-charge terms (PUT \$0.005/1k, GET \$0.0004/1k) and egress exclusion notes in `bench/s3/BenchAwsS3Compaction.py` Phase 5 economics. |
+| **#4** | Hard limit of 16 MiB per message | Fundamental-by-design | Preserved as an essential security and memory ceiling. Real log lines are $\ll 16$ MiB; per-thread bump scratch buffers scale $O(M)$ with the cap, and memory retention is bounded by `CAbiScratch::trim()` (1 MB). |
+| **#5** | Integer parsing and leading zeros | Closed-by-fix | Expanded `isIntToken` to accept 19 digits up to `INT64_MAX` (`9,223,372,036,854,775,807`). Tokens $> INT64\_MAX$ or $> 19$ digits fall back losslessly to `{s}` string slots. Verified in C++ and Python suites. |
+| **#6** | DuckDB integer array casting | Closed-by-fix | Dynamic list vector widening implemented for all DuckDB integer types (`INTEGER`, `SMALLINT`, `TINYINT`, `UBIGINT`). Uncast literals execute directly without explicit `::BIGINT[]` casting; $\ge 2^{63}$ yields clear error. |
+| **#7** | Platform packaging & binary availability | Closed-by-fix (MinGW) / Fundamental (Wasm/32-bit) | MinGW-w64 GCC build and Python test suite automated in CI (`test-mingw` job). WebAssembly and 32-bit remain unsupported due to fundamental 64-bit integer word assumptions. |
+
+---
+
 ## Literature grounding and citations
 
 1. **Latitude and Doubt**: Atta, M. M. (2026). *Latitude and Doubt: An exact ledger of meaning in messages with measurements on the genetic code and on English*. Zenodo Preprint. Identifies the information ledger $E = I + \Delta$, $C = I + \Lambda$, semantic leakage $\Lambda$, and Theorem 8 latitude channel capacity $\Lambda = \sum Q_i \min\{1, 2^{k_i} Q_i\}$. Invariants W1.2 and W1.5 directly enforce the Proposition 9 key bounds and finite-precision constraints proved in the paper.

@@ -50,16 +50,20 @@ def _is_int_token(s: str) -> bool:
 
     inv: parses into int64 without overflow or leading zero ambiguity
     in: s is ASCII candidate string
-    out: True if s is 1-18 decimal digits and no leading zero (except "0")
+    out: True if s is 1-19 decimal digits <= INT64_MAX and no leading zero (except "0")
     thread: thread-safe, pure function
     """
-    # reject empty strings and tokens > 18 digits to prevent int64 overflow
-    if not s or len(s) > 18:
+    # reject empty strings and tokens > 19 digits to prevent int64 overflow
+    if not s or len(s) > 19:
         return False
     # preserve leading zero strings (e.g. "0123") as strings to prevent loss
     if s[0] == "0":
         return len(s) == 1
-    return all("0" <= c <= "9" for c in s)
+    if not all("0" <= c <= "9" for c in s):
+        return False
+    if len(s) == 19 and int(s) > 9223372036854775807:
+        return False
+    return True
 
 
 def _scan(msg: str, mode: str):
@@ -79,10 +83,15 @@ def _scan(msg: str, mode: str):
 
     while p < n:
         d_start = p
+        delim_has_newline = False
         # skip delimiters; keep quotes in semantic mode to parse string literals
         while p < n and msg[p] in DELIMITERS and not (mode == "semantic" and msg[p] in ('"', "'")):
+            if msg[p] == "\n":
+                delim_has_newline = True
             p += 1
         d_end = p
+        if delim_has_newline:
+            last_word = ""
         last_delim = msg[d_end - 1] if d_end > d_start else ""
 
         if p >= n:
@@ -134,7 +143,7 @@ def _scan(msg: str, mode: str):
             is_var = True
         elif mode == "semantic":
             # semantic mode promotes tokens following key delimiters or keywords
-            if last_delim in ("=", "@", '"', "'"):
+            if last_delim in ("=", '"', "'"):
                 is_var = True
             elif last_word and last_word.lower() in CONTEXT_KEYWORDS:
                 is_var = True

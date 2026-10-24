@@ -122,7 +122,9 @@ template <class OnToken>
 
     while (p < end) {
         const auto* const dStart = p;
+        bool delimHasNewline = false;
         while (p < end && (detail::kClass[*p] & detail::kDelim)) {
+            if (*p == '\n') delimHasNewline = true;
             if (mode == ScanMode::Semantic && (*p == '"' || *p == '\'')) {
                 const unsigned char quote = *p;
                 if ((quote == '"' && unclosedDoubleQuoteEnd != nullptr && p < unclosedDoubleQuoteEnd) ||
@@ -137,6 +139,9 @@ template <class OnToken>
             }
             all |= detail::kClass[*p];
             ++p;
+        }
+        if (delimHasNewline) {
+            lastWord = {};
         }
         const auto* const dEnd = p;
         const auto dLen = static_cast<std::size_t>(dEnd - dStart);
@@ -219,12 +224,12 @@ template <class OnToken>
 /// inv: preserves lossless invertibility:
 ///      1. leading zeros rejected ("007" stays string) to prevent format loss
 ///      2. signs (+/-) rejected ("-1" stays string) to avoid sign bit drop
-///      3. tokens > 18 digits rejected (fits under INT64_MAX without overflow)
+///      3. tokens > 19 digits or exceeding INT64_MAX rejected (falls back to string slot)
 /// in: t token view
-/// out: true if token is strictly non-negative decimal integer <= 18 digits
+/// out: true if token is strictly non-negative decimal integer <= 19 digits
 /// thread: pure, thread-safe, noexcept
 [[nodiscard]] constexpr bool isIntToken(std::string_view t) noexcept {
-    if (t.empty() || t.size() > 18) return false;
+    if (t.empty() || t.size() > 19) return false;
     if (t.front() == '0') return t.size() == 1;
     return std::ranges::all_of(t, [](char c) { return c >= '0' && c <= '9'; });
 }

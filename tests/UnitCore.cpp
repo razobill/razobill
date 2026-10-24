@@ -83,12 +83,14 @@ TEST_CASE("semantic text variables without digits eliminate over-splitting") {
     CHECK(q1 == "error: {s} in job");
 }
 
-// pins integer token boundaries: 1-18 digits, no leading zeros or signs
+// pins integer token boundaries: 1-19 digits, no leading zeros or signs
 TEST_CASE("integer rule") {
     for (auto [tok, isInt] : std::initializer_list<std::pair<const char*, bool>>{{"0", true},
                                                                                  {"7", true},
                                                                                  {"123456789012345678", true},
-                                                                                 {"1234567890123456789", false},
+                                                                                 {"1234567890123456789", true},
+                                                                                 {"9223372036854775807", true},
+                                                                                 {"12345678901234567890", false},
                                                                                  {"00", false},
                                                                                  {"007", false},
                                                                                  {"-5", false},
@@ -98,6 +100,26 @@ TEST_CASE("integer rule") {
                                                                                  {"0x1f", false},
                                                                                  {"12ab", false}})
         CHECK_MESSAGE(isIntToken(tok) == isInt, tok);
+
+    // 19-digit boundary: INT64_MAX parsed as integer slot {i}
+    std::string fMax;
+    CHECK(roundtrip("9223372036854775807", &fMax) == "9223372036854775807");
+    CHECK(fMax == "{i}");
+
+    // 19-digit boundary + 1: INT64_MAX + 1 parsed as string slot {s} (lossless fallback)
+    std::string fOverflow;
+    CHECK(roundtrip("9223372036854775808", &fOverflow) == "9223372036854775808");
+    CHECK(fOverflow == "{s}");
+
+    // 20-digit token: parsed as string slot {s}
+    std::string f20;
+    CHECK(roundtrip("12345678901234567890", &f20) == "12345678901234567890");
+    CHECK(f20 == "{s}");
+
+    // multi-line keyword context reset: newline stops keyword context from bleeding
+    std::string fMultiline;
+    CHECK(roundtrip("for\n\nalice", &fMultiline, ScanMode::Semantic) == "for\n\nalice");
+    CHECK(fMultiline == "for\n\nalice");
 }
 
 // pins delimiter matching for RE2 whitespace and punctuation classes

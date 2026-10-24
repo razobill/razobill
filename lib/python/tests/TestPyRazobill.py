@@ -151,10 +151,44 @@ class TestPyRazobill(unittest.TestCase):
         self.assertEqual(rz.RzJoin(rec), msg)
 
     def test_edge_cases_oversized_integers(self):
-        # pins string promotion for integers > 18 digits to prevent overflow
+        # pins string promotion for integers > 19 digits or > INT64_MAX to prevent overflow
         msg = "Large token 9999999999999999999999999999999999999999 end"
         rec = rz.RzSplit(msg)
         self.assertEqual(rz.RzJoin(rec), msg)
+
+        # 19 digits up to INT64_MAX extracted as integer slot {i}
+        max_int_msg = "Max: 9223372036854775807"
+        rec_max = rz.RzSplit(max_int_msg)
+        self.assertEqual(rec_max.ints, [9223372036854775807])
+        self.assertEqual(rec_max.template, "Max: {i}")
+        self.assertEqual(rz.RzJoin(rec_max), max_int_msg)
+        fb_max = _fallback.split(max_int_msg, "exact")
+        self.assertEqual(fb_max[1], [9223372036854775807])
+        self.assertEqual(fb_max[0], "Max: {i}")
+        self.assertEqual(_fallback.join(*fb_max), max_int_msg)
+
+        # 19 digits exceeding INT64_MAX extracted as string slot {s}
+        overflow_msg = "Overflow: 9223372036854775808"
+        rec_ovf = rz.RzSplit(overflow_msg)
+        self.assertEqual(rec_ovf.ints, [])
+        self.assertEqual(rec_ovf.strs, ["9223372036854775808"])
+        self.assertEqual(rec_ovf.template, "Overflow: {s}")
+        self.assertEqual(rz.RzJoin(rec_ovf), overflow_msg)
+        fb_ovf = _fallback.split(overflow_msg, "exact")
+        self.assertEqual(fb_ovf[1], [])
+        self.assertEqual(fb_ovf[2], ["9223372036854775808"])
+        self.assertEqual(fb_ovf[0], "Overflow: {s}")
+        self.assertEqual(_fallback.join(*fb_ovf), overflow_msg)
+
+    def test_multiline_keyword_reset(self):
+        # newline stops context keyword from bleeding to next line
+        msg = "for\n\nalice"
+        rec = rz.RzSplit(msg, mode="semantic")
+        self.assertEqual(rec.template, "for\n\nalice")
+        self.assertEqual(rec.strs, [])
+        fb_rec = _fallback.split(msg, "semantic")
+        self.assertEqual(fb_rec[0], "for\n\nalice")
+        self.assertEqual(fb_rec[2], [])
 
     def test_edge_cases_literal_braces(self):
         # pins lossless round-trip of literal single and doubled curly braces

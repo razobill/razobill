@@ -259,19 +259,28 @@ def runS3CompactionBenchmark(
         assert mismatches == 0, f"Found {mismatches} mismatches in S3 data!"
 
         # Phase 5: Cloud Cost Economics
-        s3_rate = 0.023
-        athena_rate = 5.00
+        # Egress charges excluded from calculation; storage measured on local emulation (LocalStack / MinIO)
+        s3_rate = 0.023  # $0.023 / GB-month standard storage
+        s3_put_rate_per_1k = 0.005  # $0.005 per 1,000 PUT/POST requests
+        s3_get_rate_per_1k = 0.0004  # $0.0004 per 1,000 GET requests
+        athena_rate = 5.00  # $5.00 / TB scanned
 
-        # 1 TB/month
-        t1_raw_storage = 1024.0 * s3_rate
-        t1_rb_storage = 1024.0 * (1.0 - (compaction_vs_raw_text / 100.0)) * s3_rate
+        # 1 TB/month (assumes 10k PUTs, 50k GETs for analytical queries; egress excluded)
+        t1_put_requests = 10_000
+        t1_get_requests = 50_000
+        t1_req_charges = (t1_put_requests / 1000.0) * s3_put_rate_per_1k + (t1_get_requests / 1000.0) * s3_get_rate_per_1k
+        t1_raw_storage = 1024.0 * s3_rate + t1_req_charges
+        t1_rb_storage = 1024.0 * (1.0 - (compaction_vs_raw_text / 100.0)) * s3_rate + t1_req_charges
         t1_athena_raw = (1024.0 * 0.3 * 30.0 / 1000.0) * athena_rate * 100.0
         t1_athena_rb = t1_athena_raw * 0.08
         t1_savings = (t1_raw_storage - t1_rb_storage) + (t1_athena_raw - t1_athena_rb)
 
-        # 30 TB/month
-        t30_raw_storage = 30.0 * 1024.0 * s3_rate
-        t30_rb_storage = t30_raw_storage * (1.0 - (compaction_vs_raw_text / 100.0))
+        # 30 TB/month (assumes 300k PUTs, 1.5M GETs; egress excluded)
+        t30_put_requests = 300_000
+        t30_get_requests = 1_500_000
+        t30_req_charges = (t30_put_requests / 1000.0) * s3_put_rate_per_1k + (t30_get_requests / 1000.0) * s3_get_rate_per_1k
+        t30_raw_storage = 30.0 * 1024.0 * s3_rate + t30_req_charges
+        t30_rb_storage = (30.0 * 1024.0 * s3_rate * (1.0 - (compaction_vs_raw_text / 100.0))) + t30_req_charges
         t30_athena_raw = (30.0 * 1024.0 * 0.3 * 30.0 / 1000.0) * athena_rate * 100.0
         t30_athena_rb = t30_athena_raw * 0.08
         t30_savings = (t30_raw_storage - t30_rb_storage) + (t30_athena_raw - t30_athena_rb)

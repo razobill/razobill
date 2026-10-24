@@ -493,6 +493,7 @@ TEST_CASE("composite struct decomposition in DuckDB SQL") {
     // verify RzJoin with diverse list integer types (INTEGER, SMALLINT, TINYINT, UBIGINT)
     CHECK(b->query("SELECT RzJoin('test {i} {i}', [10::INTEGER, 20::INTEGER], []::VARCHAR[])").str(0, 0) ==
           "test 10 20");
+    CHECK(b->query("SELECT RzJoin('Port {i}', [22], []::VARCHAR[])").str(0, 0) == "Port 22");
     CHECK(b->query("SELECT RzJoin('val {i}', [42::SMALLINT], []::VARCHAR[])").str(0, 0) == "val 42");
     CHECK(b->query("SELECT RzJoin('val {i}', [7::TINYINT], []::VARCHAR[])").str(0, 0) == "val 7");
     CHECK(b->query("SELECT RzJoin('val {i}', [999::UBIGINT], []::VARCHAR[])").str(0, 0) == "val 999");

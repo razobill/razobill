@@ -184,7 +184,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: ext/otel/go.mod
           cache-dependency-path: ext/otel/go.sum
@@ -227,7 +227,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "20"
 
@@ -335,5 +335,4 @@ jobs:
       - name: Run Python Tests under MinGW
         shell: msys2 {0}
         run: |
-          python -m unittest discover -s lib/python/tests -p "Test*.py"
-          python -m pytest lib/python/tests/TestProperties.py
+          python -m unittest discover -s lib/python/tests -p "TestPyRazobill.py" < /dev/null

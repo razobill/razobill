@@ -39,33 +39,23 @@ namespace {
 
 // -- thread pool and concurrency lifecycle ------------------------------------
 
-/// returns reference to process-wide thread pool holder
-std::unique_ptr<core::ThreadPool>& getThreadPoolHolder() {
-    static std::unique_ptr<core::ThreadPool> pool = std::make_unique<core::ThreadPool>();
-    return pool;
-}
-
 /// retrieves process thread pool, registering pthread_atfork handler on posix
 ///
-/// inv     re-initializes pool in forked child processes to prevent deadlocks
+/// inv     never runs ThreadPool destructor at process exit (avoids Windows loader-lock deadlock)
 /// out     reference to active ThreadPool instance
-/// thread  thread-safe via std::call_once
+/// thread  thread-safe via static allocation and std::call_once
 core::ThreadPool& getThreadPool() {
+    static core::ThreadPool* pool = new core::ThreadPool();
     static std::once_flag initFork;
     std::call_once(initFork, [] {
 #ifndef _WIN32
         // ~ resets pool on fork so child workers do not inherit locked mutexes or dead parent thread IDs
         pthread_atfork(nullptr, nullptr, [] {
-            (void)getThreadPoolHolder().release();
-            getThreadPoolHolder() = std::make_unique<core::ThreadPool>();
+            pool = new core::ThreadPool();
         });
 #endif
     });
-    auto& p = getThreadPoolHolder();
-    if (!p) {
-        p = std::make_unique<core::ThreadPool>();
-    }
-    return *p;
+    return *pool;
 }
 
 // -- parameter parsing and error formatting ----------------------------------

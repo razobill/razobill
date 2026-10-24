@@ -496,6 +496,16 @@ TEST_CASE("composite struct decomposition in DuckDB SQL") {
     CHECK(b->query("SELECT RzJoin('val {i}', [42::SMALLINT], []::VARCHAR[])").str(0, 0) == "val 42");
     CHECK(b->query("SELECT RzJoin('val {i}', [7::TINYINT], []::VARCHAR[])").str(0, 0) == "val 7");
     CHECK(b->query("SELECT RzJoin('val {i}', [999::UBIGINT], []::VARCHAR[])").str(0, 0) == "val 999");
+
+    // verify varargs RzJoin overloads
+    CHECK(b->query("SELECT RzJoin('User {s} logged in with port {i}', 'alice', 443)").str(0, 0) ==
+          "User alice logged in with port 443");
+    CHECK(b->query("SELECT RzJoin('{s}: code={i} status={s}', 'auth', 200, 'ok')").str(0, 0) ==
+          "auth: code=200 status=ok");
+
+    // verify UBIGINT >= 2^63 is rejected instead of silently overflowing
+    CHECK_THROWS(b->query("SELECT RzJoin('overflow {i}', [9223372036854775808::UBIGINT], []::VARCHAR[])"));
+    CHECK_THROWS(b->query("SELECT RzJoin('overflow {i}', 9223372036854775808::UBIGINT)"));
 }
 
 // pins raw binary BLOB round-trip over invalid UTF-8 byte sequences

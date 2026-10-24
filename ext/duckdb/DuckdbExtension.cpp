@@ -327,9 +327,14 @@ inline bool appendIntListValues(const Arg& a, idx_t r, std::vector<std::int64_t>
         case DUCKDB_TYPE_TINYINT:
             val = static_cast<std::int64_t>(static_cast<const std::int8_t*>(a.childData)[childIdx]);
             break;
-        case DUCKDB_TYPE_UBIGINT:
-            val = static_cast<std::int64_t>(static_cast<const std::uint64_t*>(a.childData)[childIdx]);
+        case DUCKDB_TYPE_UBIGINT: {
+            const auto u = static_cast<const std::uint64_t*>(a.childData)[childIdx];
+            if (u >= (std::uint64_t{1} << 63)) {
+                return false;
+            }
+            val = static_cast<std::int64_t>(u);
             break;
+        }
         case DUCKDB_TYPE_UINTEGER:
             val = static_cast<std::int64_t>(static_cast<const std::uint32_t*>(a.childData)[childIdx]);
             break;
@@ -427,9 +432,16 @@ void RzJoinImpl(duckdb_function_info info, duckdb_data_chunk in, duckdb_vector o
             case Kind::I8:
                 sc.ints.push_back(static_cast<const std::int8_t*>(a.data)[r]);
                 break;
-            case Kind::U64:
-                sc.ints.push_back(static_cast<std::int64_t>(static_cast<const std::uint64_t*>(a.data)[r]));
+            case Kind::U64: {
+                const auto u = static_cast<const std::uint64_t*>(a.data)[r];
+                if (u >= (std::uint64_t{1} << 63)) {
+                    duckdb_scalar_function_set_error(
+                        info, "RzJoin: integer value exceeds signed 64-bit range (>= 2^63) or is null");
+                    return;
+                }
+                sc.ints.push_back(static_cast<std::int64_t>(u));
                 break;
+            }
             case Kind::U32:
                 sc.ints.push_back(static_cast<std::int64_t>(static_cast<const std::uint32_t*>(a.data)[r]));
                 break;
@@ -444,7 +456,9 @@ void RzJoinImpl(duckdb_function_info info, duckdb_data_chunk in, duckdb_vector o
                 break;
             case Kind::IntList:
                 if (!appendIntListValues(a, r, sc.ints)) {
-                    rowHasNullArg = true;
+                    duckdb_scalar_function_set_error(
+                        info, "RzJoin: integer value exceeds signed 64-bit range (>= 2^63) or is null");
+                    return;
                 }
                 break;
             case Kind::StrList:

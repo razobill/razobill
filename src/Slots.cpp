@@ -128,7 +128,7 @@ Status reconstructLegacy(std::string_view form, std::span<const std::int64_t> in
     if (size > kMaxMessageBytes) return Status::TooLarge;
     for (std::size_t i = 0; i < nInt; ++i) {
         if (ints[i] < 0) return Status::Malformed;
-        const auto d = static_cast<std::size_t>(digits10(ints[i]));
+        const auto d = digits10(ints[i]);
         if (kMaxMessageBytes - size < d) return Status::TooLarge;
         size += d;
     }
@@ -191,7 +191,7 @@ Status reconstructNew(std::string_view tmpl, std::span<const std::int64_t> ints,
             } else if (p + 2 < end && *(p + 1) == 'i' && *(p + 2) == '}') {
                 if (nInt >= ints.size()) return Status::SlotUnderflow;
                 if (ints[nInt] < 0) return Status::Malformed;
-                if (!checkAdd(static_cast<std::size_t>(digits10(ints[nInt++])))) return Status::TooLarge;
+                if (!checkAdd(digits10(ints[nInt++]))) return Status::TooLarge;
                 p += 3;
             } else if (p + 2 < end && *(p + 1) == 's' && *(p + 2) == '}') {
                 if (nStr >= strs.size()) return Status::SlotUnderflow;

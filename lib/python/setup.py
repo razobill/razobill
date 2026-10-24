@@ -177,6 +177,7 @@ try:
             "pyrazobill.Core",
             sources=sources,
             include_dirs=includeDirs,
+            define_macros=[("LIBRAZOBILL_STATIC", "1")],
             cxx_std=20,
         ),
     ]

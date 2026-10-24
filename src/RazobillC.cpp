@@ -70,8 +70,15 @@ struct CAbiScratch {
 };
 
 struct ScratchTrimGuard {
-    CAbiScratch& scratch;
-    ~ScratchTrimGuard() noexcept { scratch.trim(); }
+    explicit ScratchTrimGuard(CAbiScratch& s) noexcept : scratch(&s) {}
+    ScratchTrimGuard(const ScratchTrimGuard&) = delete;
+    ScratchTrimGuard& operator=(const ScratchTrimGuard&) = delete;
+    ScratchTrimGuard(ScratchTrimGuard&&) = delete;
+    ScratchTrimGuard& operator=(ScratchTrimGuard&&) = delete;
+    ~ScratchTrimGuard() noexcept {
+        if (scratch) scratch->trim();
+    }
+    CAbiScratch* scratch{nullptr};
 };
 
 #if defined(__MINGW32__) || defined(__MINGW64__)

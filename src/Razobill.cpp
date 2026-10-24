@@ -142,10 +142,17 @@ void requirePattern(const std::string& pattern) {
 /// in      finite double-precision value
 /// out     string with 17 decimal digits of precision
 std::string num(double d) {
+#if defined(__APPLE__)
+    std::array<char, 64> buf{};
+    int n = std::snprintf(buf.data(), buf.size(), "%.17g", d);
+    if (n <= 0 || static_cast<std::size_t>(n) >= buf.size()) return "0.0";
+    return {buf.data(), static_cast<std::size_t>(n)};
+#else
     std::array<char, 64> buf{};
     auto [ptr, ec] = std::to_chars(buf.data(), buf.data() + buf.size(), d);
     if (ec != std::errc()) return "0.0";
-    return std::string(buf.data(), ptr);
+    return {buf.data(), static_cast<std::size_t>(ptr - buf.data())};
+#endif
 }
 
 /// checks whether candidate column name collides with internal engine slots

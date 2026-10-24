@@ -28,10 +28,24 @@ struct InternalRecord {
     std::vector<size_t> strLengths;
 };
 
+// 1 MB retention cap for thread-local working buffers
+constexpr std::size_t kScratchKeepBytes = std::size_t{1} << 20;
+
 struct CAbiScratch {
     razobill::core::SlotRecord slots;
     std::vector<std::string_view> strViews;
     std::string result;
+
+    void trim() {
+        if (result.capacity() > kScratchKeepBytes) std::string().swap(result);
+        if (slots.templateStr.capacity() > kScratchKeepBytes) std::string().swap(slots.templateStr);
+        if (slots.ints.capacity() * sizeof(std::int64_t) > kScratchKeepBytes)
+            std::vector<std::int64_t>().swap(slots.ints);
+        if (slots.strs.capacity() * sizeof(std::string_view) > kScratchKeepBytes)
+            std::vector<std::string_view>().swap(slots.strs);
+        if (strViews.capacity() * sizeof(std::string_view) > kScratchKeepBytes)
+            std::vector<std::string_view>().swap(strViews);
+    }
 };
 
 #if defined(__MINGW32__) || defined(__MINGW64__)
@@ -69,9 +83,15 @@ RZ_API RzStatus RzSplit(const char* message, size_t messageLength, RzRecord* out
     if (!outRecord) return RZ_ERR_INVALID_ARGUMENT;
     if (!message && messageLength > 0) return RZ_ERR_INVALID_ARGUMENT;
 
+    std::unique_ptr<InternalRecord> internal;
     if (outRecord->internalHandle) {
-        delete static_cast<InternalRecord*>(outRecord->internalHandle);
+        internal.reset(static_cast<InternalRecord*>(outRecord->internalHandle));
+        internal->slots.clear();
+        internal->strPointers.clear();
+        internal->strLengths.clear();
         outRecord->internalHandle = nullptr;
+    } else {
+        internal = std::make_unique<InternalRecord>();
     }
     std::memset(outRecord, 0, sizeof(RzRecord));
 
@@ -79,16 +99,17 @@ RZ_API RzStatus RzSplit(const char* message, size_t messageLength, RzRecord* out
         static const char emptyStr = '\0';
         outRecord->templateStr = &emptyStr;
         outRecord->templateLength = 0;
+        outRecord->internalHandle = internal.release();
         return RZ_OK;
     }
 
     try {
-        auto internal = std::make_unique<InternalRecord>();
         const std::string_view msgView(message, messageLength);
 
         const razobill::Status status =
             razobill::core::parse(msgView, internal->slots, razobill::core::ScanMode::Semantic);
         if (status != razobill::Status::Ok) {
+            outRecord->internalHandle = internal.release();
             if (status == razobill::Status::TooLarge) return RZ_ERR_MESSAGE_TOO_LARGE;
             if (status == razobill::Status::Malformed) return RZ_ERR_MALFORMED_TEMPLATE;
             return RZ_ERR_INVALID_ARGUMENT;
@@ -113,8 +134,10 @@ RZ_API RzStatus RzSplit(const char* message, size_t messageLength, RzRecord* out
 
         return RZ_OK;
     } catch (const std::bad_alloc&) {
+        outRecord->internalHandle = internal.release();
         return RZ_ERR_OUT_OF_MEMORY;
     } catch (...) {
+        outRecord->internalHandle = internal.release();
         return RZ_ERR_INTERNAL;
     }
 }
@@ -129,8 +152,20 @@ RZ_API RzStatus RzSplit(const char* message, size_t messageLength, RzRecord* out
 RZ_API RzStatus RzJoin(const RzRecord* record, char* outBuffer, size_t bufferCapacity, size_t* outLength) {
     if (!record) return RZ_ERR_INVALID_ARGUMENT;
     if (!record->templateStr && record->templateLength > 0) return RZ_ERR_INVALID_ARGUMENT;
+    if (record->templateLength > razobill::core::kMaxMessageBytes) return RZ_ERR_MESSAGE_TOO_LARGE;
     if (record->intCount > 0 && !record->intValues) return RZ_ERR_INVALID_ARGUMENT;
     if (record->strCount > 0 && (!record->strValues || !record->strLengths)) return RZ_ERR_INVALID_ARGUMENT;
+
+    const size_t maxPossibleSlots = (record->templateLength / 3) + 1;
+    if (record->intCount > maxPossibleSlots || record->strCount > maxPossibleSlots) {
+        return RZ_ERR_COUNT_MISMATCH;
+    }
+
+    for (size_t i = 0; i < record->strCount; ++i) {
+        if (record->strLengths[i] > razobill::core::kMaxMessageBytes) {
+            return RZ_ERR_MESSAGE_TOO_LARGE;
+        }
+    }
 
     try {
         const std::string_view tmplView(record->templateStr ? record->templateStr : "", record->templateLength);
@@ -154,6 +189,7 @@ RZ_API RzStatus RzJoin(const RzRecord* record, char* outBuffer, size_t bufferCap
         const razobill::Status status =
             razobill::core::reconstruct(tmplView, intSpan, scratch.strViews, scratch.result);
         if (status != razobill::Status::Ok) {
+            scratch.trim();
             if (status == razobill::Status::SlotUnderflow || status == razobill::Status::SlotOverflow)
                 return RZ_ERR_COUNT_MISMATCH;
             if (status == razobill::Status::Malformed) return RZ_ERR_MALFORMED_TEMPLATE;
@@ -165,16 +201,19 @@ RZ_API RzStatus RzJoin(const RzRecord* record, char* outBuffer, size_t bufferCap
         if (outLength) *outLength = reqLen;
 
         if (reqLen == 0) {
+            scratch.trim();
             return RZ_OK;
         }
 
         if (!outBuffer || bufferCapacity < reqLen) {
+            scratch.trim();
             return RZ_ERR_BUFFER_TOO_SMALL;
         }
 
         if (reqLen > 0) {
             std::memcpy(outBuffer, scratch.result.data(), reqLen);
         }
+        scratch.trim();
         return RZ_OK;
     } catch (const std::bad_alloc&) {
         return RZ_ERR_OUT_OF_MEMORY;
@@ -213,16 +252,19 @@ RZ_API RzStatus RzTemplate(const char* message, size_t messageLength, char* outB
         if (outLength) *outLength = reqLen;
 
         if (reqLen == 0) {
+            scratch.trim();
             return RZ_OK;
         }
 
         if (!outBuffer || bufferCapacity < reqLen) {
+            scratch.trim();
             return RZ_ERR_BUFFER_TOO_SMALL;
         }
 
         if (reqLen > 0) {
             std::memcpy(outBuffer, scratch.slots.templateStr.data(), reqLen);
         }
+        scratch.trim();
         return RZ_OK;
     } catch (const std::bad_alloc&) {
         return RZ_ERR_OUT_OF_MEMORY;

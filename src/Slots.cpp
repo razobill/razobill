@@ -126,12 +126,18 @@ Status reconstructLegacy(std::string_view form, std::span<const std::int64_t> in
     }
 
     std::size_t size = skeleton.size() - types.size();
+    if (size > kMaxMessageBytes) return Status::TooLarge;
     for (std::size_t i = 0; i < nInt; ++i) {
         if (ints[i] < 0) return Status::Malformed;
-        size += digits10(ints[i]);
+        const auto d = static_cast<std::size_t>(digits10(ints[i]));
+        if (kMaxMessageBytes - size < d) return Status::TooLarge;
+        size += d;
     }
-    for (std::size_t i = 0; i < nStr; ++i)
-        size += strs[i].size();
+    for (std::size_t i = 0; i < nStr; ++i) {
+        const auto sLen = strs[i].size();
+        if (kMaxMessageBytes - size < sLen) return Status::TooLarge;
+        size += sLen;
+    }
     if (size > kMaxMessageBytes) return Status::TooLarge;
 
     out.clear();
@@ -172,26 +178,32 @@ Status reconstructNew(std::string_view tmpl, std::span<const std::int64_t> ints,
     std::size_t nStr = 0;
     std::size_t estSize = 0;
 
+    const auto checkAdd = [&](std::size_t delta) -> bool {
+        if (kMaxMessageBytes - estSize < delta) return false;
+        estSize += delta;
+        return true;
+    };
+
     while (p < end) {
         if (*p == '{') {
             if (p + 1 < end && *(p + 1) == '{') {
-                estSize += 1;
+                if (!checkAdd(1)) return Status::TooLarge;
                 p += 2;
             } else if (p + 2 < end && *(p + 1) == 'i' && *(p + 2) == '}') {
                 if (nInt >= ints.size()) return Status::SlotUnderflow;
                 if (ints[nInt] < 0) return Status::Malformed;
-                estSize += digits10(ints[nInt++]);
+                if (!checkAdd(static_cast<std::size_t>(digits10(ints[nInt++])))) return Status::TooLarge;
                 p += 3;
             } else if (p + 2 < end && *(p + 1) == 's' && *(p + 2) == '}') {
                 if (nStr >= strs.size()) return Status::SlotUnderflow;
-                estSize += strs[nStr++].size();
+                if (!checkAdd(strs[nStr++].size())) return Status::TooLarge;
                 p += 3;
             } else {
                 return Status::Malformed;
             }
         } else if (*p == '}') {
             if (p + 1 < end && *(p + 1) == '}') {
-                estSize += 1;
+                if (!checkAdd(1)) return Status::TooLarge;
                 p += 2;
             } else {
                 return Status::Malformed;
@@ -200,17 +212,16 @@ Status reconstructNew(std::string_view tmpl, std::span<const std::int64_t> ints,
             if (p + 1 < end && (static_cast<unsigned char>(*(p + 1)) == kEscapePrefix ||
                                 static_cast<unsigned char>(*(p + 1)) == kPlaceholder ||
                                 static_cast<unsigned char>(*(p + 1)) == kTypeSeparator)) {
-                estSize += 1;
+                if (!checkAdd(1)) return Status::TooLarge;
                 p += 2;
             } else {
-                estSize += 1;
+                if (!checkAdd(1)) return Status::TooLarge;
                 p += 1;
             }
         } else {
-            estSize += 1;
+            if (!checkAdd(1)) return Status::TooLarge;
             p += 1;
         }
-        if (estSize > kMaxMessageBytes) return Status::TooLarge;
     }
 
     if (nInt == 0 && nStr == 0 && (!ints.empty() || !strs.empty())) {

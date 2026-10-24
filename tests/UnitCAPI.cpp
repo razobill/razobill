@@ -183,3 +183,64 @@ TEST_CASE("Universal C ABI: zero-length probe and contract edge cases") {
     CHECK(reqLen == 0);
 }
 
+TEST_CASE("capi: corrupt manual record rejections") {
+    // 1. Template length exceeding kMaxMessageBytes (16 MiB)
+    {
+        RzRecord rec{};
+        const char dummy[] = "short";
+        rec.templateStr = dummy;
+        rec.templateLength = (16ULL << 20) + 1;
+        size_t outLen = 0;
+        CHECK(RzJoin(&rec, nullptr, 0, &outLen) == RZ_ERR_MESSAGE_TOO_LARGE);
+    }
+
+    // 2. Disproportionate slot count relative to template length
+    {
+        RzRecord rec{};
+        const char tmpl[] = "{i}";
+        int64_t ints[10] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+        rec.templateStr = tmpl;
+        rec.templateLength = sizeof(tmpl) - 1; // 3 bytes -> max possible slots is 2
+        rec.intValues = ints;
+        rec.intCount = 10;
+        size_t outLen = 0;
+        CHECK(RzJoin(&rec, nullptr, 0, &outLen) == RZ_ERR_COUNT_MISMATCH);
+    }
+
+    // 3. String length exceeding kMaxMessageBytes
+    {
+        RzRecord rec{};
+        const char tmpl[] = "{s}";
+        const char* sPtr = "hello";
+        size_t sLen = (16ULL << 20) + 10;
+        rec.templateStr = tmpl;
+        rec.templateLength = sizeof(tmpl) - 1;
+        rec.strValues = &sPtr;
+        rec.strLengths = &sLen;
+        rec.strCount = 1;
+        size_t outLen = 0;
+        CHECK(RzJoin(&rec, nullptr, 0, &outLen) == RZ_ERR_MESSAGE_TOO_LARGE);
+    }
+}
+
+TEST_CASE("capi: record reuse retains capacity") {
+    RzRecord rec{};
+    const char msg1[] = "msg one 100";
+    REQUIRE(RzSplit(msg1, sizeof(msg1) - 1, &rec) == RZ_OK);
+    void* handle1 = rec.internalHandle;
+    CHECK(handle1 != nullptr);
+    CHECK(rec.intCount == 1);
+    CHECK(rec.intValues[0] == 100);
+
+    // Reuse without calling RzFree: internal handle memory should be preserved
+    const char msg2[] = "msg two 200 and three 300";
+    REQUIRE(RzSplit(msg2, sizeof(msg2) - 1, &rec) == RZ_OK);
+    CHECK(rec.internalHandle == handle1);
+    CHECK(rec.intCount == 2);
+    CHECK(rec.intValues[0] == 200);
+    CHECK(rec.intValues[1] == 300);
+
+    RzFree(&rec);
+    CHECK(rec.internalHandle == nullptr);
+}
+

@@ -8,7 +8,7 @@
 //! native Vector Remap Language (VRL) transform wrapping librazobill C ABI
 
 use std::collections::BTreeMap;
-use std::os::raw::c_char;
+use std::os::raw::{c_char, c_int};
 
 /// C ABI record structure returned by RzSplit
 /// own: internal memory allocated by C engine; must be released via RzFree
@@ -25,19 +25,16 @@ pub struct RzRecord {
     pub internal_handle: *mut std::ffi::c_void,
 }
 
-/// C ABI status codes matching RazobillC.h RzStatus
-#[repr(C)]
-#[derive(Debug, PartialEq, Eq)]
-pub enum RzStatus {
-    Ok = 0,
-    ErrInvalidArgument = 1,
-    ErrBufferTooSmall = 2,
-    ErrMalformedTemplate = 3,
-    ErrCountMismatch = 4,
-    ErrMessageTooLarge = 5,
-    ErrOutOfMemory = 6,
-    ErrInternal = 7,
-}
+/// C ABI status code type matching RazobillC.h RzStatus
+pub type RzStatus = c_int;
+pub const RZ_OK: RzStatus = 0;
+pub const RZ_ERR_INVALID_ARGUMENT: RzStatus = 1;
+pub const RZ_ERR_BUFFER_TOO_SMALL: RzStatus = 2;
+pub const RZ_ERR_MALFORMED_TEMPLATE: RzStatus = 3;
+pub const RZ_ERR_COUNT_MISMATCH: RzStatus = 4;
+pub const RZ_ERR_MESSAGE_TOO_LARGE: RzStatus = 5;
+pub const RZ_ERR_OUT_OF_MEMORY: RzStatus = 6;
+pub const RZ_ERR_INTERNAL: RzStatus = 7;
 
 extern "C" {
     pub fn RzSplit(
@@ -47,30 +44,47 @@ extern "C" {
     ) -> RzStatus;
 
     pub fn RzFree(record: *mut RzRecord);
+
+    pub fn RzStatusMessage(status: RzStatus) -> *const c_char;
+}
+
+/// Lossless raw decomposed record retaining exact bytes
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RawRecord {
+    pub template: Vec<u8>,
+    pub ints: Vec<i64>,
+    pub strs: Vec<Vec<u8>>,
 }
 
 /// decompose raw log message into structured JSON event map
 /// inv: template and parameter slices reconstruct original message
-/// in: raw_msg is UTF-8 string slice
-/// out: Ok(BTreeMap) with "template", "form", "ints", and "strs"
+/// in: raw_msg is UTF-8 string or raw byte slice
+/// out: Ok(BTreeMap) with "template", "form" (alias), "ints", and "strs"
 /// own: returns owned BTreeMap and serde_json::Value objects
 /// thread: thread-safe, no shared state
-/// err: returns Err with RzStatus description if RzSplit fails
-pub fn parse_razobill(raw_msg: &str) -> Result<BTreeMap<String, serde_json::Value>, String> {
+/// err: returns Err with RzStatusMessage description if RzSplit fails
+pub fn parse_razobill(raw_msg: impl AsRef<[u8]>) -> Result<BTreeMap<String, serde_json::Value>, String> {
+    let raw_bytes = raw_msg.as_ref();
     let mut record: RzRecord = unsafe { std::mem::zeroed() };
 
     let status = unsafe {
         RzSplit(
-            raw_msg.as_ptr() as *const c_char,
-            raw_msg.len(),
+            raw_bytes.as_ptr() as *const c_char,
+            raw_bytes.len(),
             &mut record,
         )
     };
 
-    if !matches!(status, RzStatus::Ok) {
-        return Err(format!(
-            "Razobill decomposition failed with status {status:?}"
-        ));
+    if status != RZ_OK {
+        let msg_ptr = unsafe { RzStatusMessage(status) };
+        let desc = if !msg_ptr.is_null() {
+            unsafe { std::ffi::CStr::from_ptr(msg_ptr) }
+                .to_string_lossy()
+                .into_owned()
+        } else {
+            format!("status code {status}")
+        };
+        return Err(format!("Razobill decomposition failed: {desc}"));
     }
 
     // RAII guard ensuring RzFree is invoked on return or unwind
@@ -84,16 +98,16 @@ pub fn parse_razobill(raw_msg: &str) -> Result<BTreeMap<String, serde_json::Valu
     }
     let _guard = RecordGuard(&mut record as *mut RzRecord);
 
-    // Vector VRL represents internal event values as UTF-8 JSON objects
-    // (serde_json::Value); using from_utf8_lossy prevents malformed byte
-    // sequences from aborting the pipeline, replacing bad bytes with U+FFFD
-    let form_str = if record.template_length > 0 && !record.template_str.is_null() {
-        let form_slice = unsafe {
+    let template_val = if record.template_length > 0 && !record.template_str.is_null() {
+        let slice = unsafe {
             std::slice::from_raw_parts(record.template_str as *const u8, record.template_length)
         };
-        String::from_utf8_lossy(form_slice).to_string()
+        match std::str::from_utf8(slice) {
+            Ok(s) => serde_json::Value::from(s),
+            Err(_) => serde_json::Value::from(slice.to_vec()),
+        }
     } else {
-        String::new()
+        serde_json::Value::from("")
     };
 
     let mut ints = Vec::with_capacity(record.int_count);
@@ -112,22 +126,21 @@ pub fn parse_razobill(raw_msg: &str) -> Result<BTreeMap<String, serde_json::Valu
             if str_lens[i] > 0 && !str_ptrs[i].is_null() {
                 let slice =
                     unsafe { std::slice::from_raw_parts(str_ptrs[i] as *const u8, str_lens[i]) };
-                strs.push(serde_json::Value::from(
-                    String::from_utf8_lossy(slice).to_string(),
-                ));
+                match std::str::from_utf8(slice) {
+                    Ok(s) => strs.push(serde_json::Value::from(s)),
+                    Err(_) => strs.push(serde_json::Value::from(slice.to_vec())),
+                }
             } else {
                 strs.push(serde_json::Value::from(""));
             }
         }
     }
 
-    // build structured event map with both "template" and "form" keys
+    // build structured event map
     let mut map = BTreeMap::new();
-    map.insert(
-        "template".to_string(),
-        serde_json::Value::from(form_str.clone()),
-    );
-    map.insert("form".to_string(), serde_json::Value::from(form_str));
+    map.insert("template".to_string(), template_val.clone());
+    // "form" is retained as a documented legacy backward-compatible alias for "template"
+    map.insert("form".to_string(), template_val);
     map.insert("ints".to_string(), serde_json::Value::Array(ints));
     map.insert("strs".to_string(), serde_json::Value::Array(strs));
 

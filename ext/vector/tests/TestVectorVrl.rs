@@ -33,3 +33,28 @@ fn test_parse_razobill() {
     assert_eq!(strs[1].as_str().unwrap(), "192.168.1.100");
     assert_eq!(strs[2].as_str().unwrap(), "ssh2");
 }
+
+#[test]
+fn test_parse_razobill_raw_bytes() {
+    let raw_bytes: &[u8] = b"Worker 100 finished in 250ms";
+    let res = parse_razobill(raw_bytes).expect("Failed to parse byte slice");
+
+    assert_eq!(res.get("template").unwrap().as_str().unwrap(), "Worker {i} finished in {s}");
+    let ints = res.get("ints").unwrap().as_array().unwrap();
+    assert_eq!(ints[0].as_i64().unwrap(), 100);
+    let strs = res.get("strs").unwrap().as_array().unwrap();
+    assert_eq!(strs[0].as_str().unwrap(), "250ms");
+}
+
+#[test]
+fn test_parse_razobill_non_utf8_lossless() {
+    let mut bad_bytes = Vec::new();
+    bad_bytes.extend_from_slice(b"invalid \xFF\xFE user 42");
+    let res = parse_razobill(&bad_bytes).expect("Failed to parse non-UTF8 slice");
+
+    assert!(res.contains_key("template"));
+    assert!(res.contains_key("ints"));
+    assert!(res.contains_key("strs"));
+    let ints = res.get("ints").unwrap().as_array().unwrap();
+    assert_eq!(ints[0].as_i64().unwrap(), 42);
+}

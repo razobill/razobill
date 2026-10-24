@@ -23,21 +23,21 @@ fn main() {
 
     // instruct cargo to link against native razobill shared library
     println!("cargo:rustc-link-search=native={}", build_dir.display());
-    println!("cargo:rustc-link-lib=dylib=razobill");
+    println!("cargo:rustc-link-lib=dylib=razobill_cabi");
 
-    // copy razobill.dll into target/deps on Windows so cargo test finds it
+    // copy razobill_cabi.dll into target/deps on Windows so cargo test finds it
     if cfg!(target_os = "windows") {
-        let dll_src = build_dir.join("razobill.dll");
+        let dll_src = build_dir.join("razobill_cabi.dll");
         if dll_src.exists() {
             if let Ok(out_dir) = env::var("OUT_DIR") {
                 let out_path = PathBuf::from(out_dir);
                 // out_path is target/{profile}/build/{crate-hash}/out
                 // ancestors: 0=out, 1=crate-hash, 2=build, 3=debug/release
                 if let Some(target_profile_dir) = out_path.ancestors().nth(3) {
-                    let _ = fs::copy(&dll_src, target_profile_dir.join("razobill.dll"));
+                    let _ = fs::copy(&dll_src, target_profile_dir.join("razobill_cabi.dll"));
                     let deps_dir = target_profile_dir.join("deps");
                     let _ = fs::create_dir_all(&deps_dir);
-                    let _ = fs::copy(&dll_src, deps_dir.join("razobill.dll"));
+                    let _ = fs::copy(&dll_src, deps_dir.join("razobill_cabi.dll"));
                 }
             }
         }
@@ -46,10 +46,10 @@ fn main() {
     // track library binaries to trigger relink on cmake rebuild
     println!(
         "cargo:rerun-if-changed={}",
-        build_dir.join("razobill.lib").display()
+        build_dir.join("librazobill_cabi.dll.a").display()
     );
     println!(
         "cargo:rerun-if-changed={}",
-        build_dir.join("razobill.dll").display()
+        build_dir.join("razobill_cabi.dll").display()
     );
 }

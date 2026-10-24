@@ -24,7 +24,7 @@ transforms:
     inputs:
       - container_logs
     source: |
-      parsed = razobill_split(.message)
+      parsed = parse_razobill!(.message)
       .template = parsed.template
       .ints = parsed.ints
       .strs = parsed.strs

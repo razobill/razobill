@@ -81,7 +81,7 @@ def main():
         type=str,
         help="The DuckDB version to encode, depending on the ABI type "
         "this encodes the duckdb version or the C API version",
-        required=True,
+        default="v1.5.6",
     )
     arg_parser.add_argument("-ev", "--extension-version", type=str, help="The Extension version to encode")
     arg_parser.add_argument(

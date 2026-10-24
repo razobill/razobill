@@ -52,6 +52,15 @@
 // C99 calling convention and frozen struct member order governed by
 // RZ_ABI_VERSION. All C++ exceptions are intercepted at the ABI boundary
 // and converted to RzStatus codes.
+//
+// SYMBOL VISIBILITY & MACRO MATRIX:
+// - LIBRAZOBILL_STATIC: Defined when compiling or consuming static librazobill.
+//   RZ_API evaluates to empty.
+// - LIBRAZOBILL_EXPORTS: Defined exclusively when building shared razobill_cabi.
+//   RZ_API evaluates to __declspec(dllexport) on Windows.
+// - Default (external consumer): External C/C++ clients linking shared library.
+//   RZ_API evaluates to __declspec(dllimport) on Windows.
+// - Non-Windows: RZ_API evaluates to default visibility.
 #ifndef LIBRAZOBILL_CAPI_H
 #define LIBRAZOBILL_CAPI_H
 

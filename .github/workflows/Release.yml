@@ -122,7 +122,15 @@ jobs:
         run: |
           python -m pip install --upgrade pip setuptools wheel pybind11 build
           python -m build --wheel
+        env:
+          PYRAZOBILL_REQUIRE_NATIVE: "1"
         working-directory: lib/python
+      - name: Smoke Test Windows Wheel
+        shell: pwsh
+        run: |
+          $wheel = Get-Item lib/python/dist/*.whl | Select-Object -First 1
+          python -m pip install $wheel.FullName
+          python -c "import pyrazobill as rz; assert rz.isNative(); assert rz.split('test 123')"
       - name: Upload Windows Wheel
         uses: actions/upload-artifact@v7
         with:
@@ -159,6 +167,8 @@ jobs:
           CIBW_SKIP: "*-musllinux_* pp*"
           CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_28"
           CIBW_MANYLINUX_AARCH64_IMAGE: "manylinux_2_28"
+          CIBW_ENVIRONMENT: 'PYRAZOBILL_REQUIRE_NATIVE="1"'
+          CIBW_TEST_COMMAND: 'python -c "import pyrazobill as rz; assert rz.isNative(); assert rz.split(\"test 123\")"'
       - name: Upload Linux Wheels
         uses: actions/upload-artifact@v7
         with:
@@ -181,10 +191,15 @@ jobs:
       - name: Build macOS Wheel
         env:
           MACOSX_DEPLOYMENT_TARGET: "11.0"
+          PYRAZOBILL_REQUIRE_NATIVE: "1"
         run: |
           python -m pip install --upgrade pip setuptools wheel pybind11 build
           python -m build --wheel
         working-directory: lib/python
+      - name: Smoke Test macOS Wheel
+        run: |
+          python -m pip install lib/python/dist/*.whl
+          python -c "import pyrazobill as rz; assert rz.isNative(); assert rz.split('test 123')"
       - name: Upload macOS Wheel
         uses: actions/upload-artifact@v7
         with:

@@ -73,13 +73,23 @@ jobs:
         run: |
           ctest --test-dir build --output-on-failure -C Release
 
+      - name: Install Python Package (Native C++ Engine)
+        run: |
+          pip install -e .
+        env:
+          RZB_REQUIRE_NATIVE: "1"
+
       - name: Run Python Unit Test Suite
         run: |
-          python lib/python/tests/TestPyRazobill.py
+          python -m unittest discover -s lib/python/tests
+        env:
+          RZB_REQUIRE_NATIVE: "1"
 
       - name: Run Python Property-Based Test Suite (Hypothesis)
         run: |
-          python lib/python/tests/TestProperties.py
+          python -m pytest lib/python/tests/TestProperties.py
+        env:
+          RZB_REQUIRE_NATIVE: "1"
 
   avx512-emulation:
     name: AVX-512 Vectorization Emulation (Intel SDE)
@@ -165,3 +175,46 @@ jobs:
           python -m pip install --upgrade pip cyclonedx-bom
           cyclonedx-py environment --output-format json --outfile sbom.json || cyclonedx-py pyproject pyproject.toml --outfile sbom.json || echo '{"bomFormat":"CycloneDX","specVersion":"1.5"}' > sbom.json
           test -s sbom.json
+
+  go-test:
+    name: OpenTelemetry Go Processor Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Tree
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache-dependency-path: ext/otel/go.sum
+
+      - name: Build C++ Universal C ABI Shared Library
+        run: |
+          sudo apt-get update && sudo apt-get install -y ninja-build g++-13
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          ninja -C build razobill_cabi
+
+      - name: Run Go Tests
+        run: |
+          LD_LIBRARY_PATH=$PWD/build go -C ext/otel test -v ./...
+
+  rust-test:
+    name: Rust Vector VRL Crate Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Tree
+        uses: actions/checkout@v7
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build C++ Universal C ABI Shared Library
+        run: |
+          sudo apt-get update && sudo apt-get install -y ninja-build g++-13
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          ninja -C build razobill_cabi
+
+      - name: Run Cargo Test
+        run: |
+          LD_LIBRARY_PATH=$PWD/build cargo test --manifest-path ext/vector/Cargo.toml --verbose

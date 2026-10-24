@@ -68,3 +68,35 @@ updates:
       - "dependencies"
       - "submodules"
     open-pull-requests-limit: 5
+
+  # 4. Go Modules (OpenTelemetry Collector Extension)
+  - package-ecosystem: "gomod"
+    directory: "/ext/otel"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:00"
+      timezone: "Etc/UTC"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "go"
+    open-pull-requests-limit: 10
+
+  # 5. Rust Cargo (Vector Remap Language Extension)
+  - package-ecosystem: "cargo"
+    directory: "/ext/vector"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:00"
+      timezone: "Etc/UTC"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "rust"
+    open-pull-requests-limit: 10

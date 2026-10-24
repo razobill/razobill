@@ -34,6 +34,8 @@ if(DEFINED EXTENSION_NAME)
   set(RAZOBILL_BUILD_EXT_ONLY ON)
 endif()
 
+set(DUCKDB_TARGET_VERSION "v1.5.6" CACHE STRING "Target DuckDB C API ABI version")
+
 option(ENABLE_NATIVE_OPTIMIZATION "Enable CPU native instruction optimizations (-march=native)" OFF)
 option(ENABLE_SANITIZER_ASAN_UBSAN "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 option(ENABLE_SANITIZER_TSAN "Enable ThreadSanitizer" OFF)
@@ -145,9 +147,8 @@ target_include_directories(RazobillDuckdb PRIVATE include thirdparty/duckdbcapi)
 if(DEFINED EXTENSION_NAME)
   target_compile_definitions(RazobillDuckdb PRIVATE DUCKDB_EXTENSION_NAME=${EXTENSION_NAME})
 else()
-  target_compile_definitions(RazobillDuckdb PRIVATE DUCKDB_EXTENSION_NAME=razobill LIBRAZOBILL_EXPORTS)
+  target_compile_definitions(RazobillDuckdb PRIVATE DUCKDB_EXTENSION_NAME=razobill)
 endif()
-target_compile_definitions(librazobill PRIVATE LIBRAZOBILL_EXPORTS)
 if(NOT MSVC)
   target_compile_options(RazobillDuckdb PRIVATE -fvisibility=hidden -Wno-missing-field-initializers)
 endif()
@@ -199,7 +200,7 @@ if(NOT RAZOBILL_BUILD_EXT_ONLY)
     # (both razobill and librazobill names)
     add_custom_command(TARGET RazobillDuckdb POST_BUILD
       COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/AppendExtensionMetadata.py -l $<TARGET_FILE:RazobillDuckdb> -n razobill
-              -o ${CMAKE_BINARY_DIR}/razobill.duckdb_extension -p ${DUCKDB_PLATFORM} -dv v1.5.6 -ev v${LIBRAZOBILL_PROJECT_VERSION} --abi-type C_STRUCT
+              -o ${CMAKE_BINARY_DIR}/razobill.duckdb_extension -p ${DUCKDB_PLATFORM} -dv ${DUCKDB_TARGET_VERSION} -ev v${LIBRAZOBILL_PROJECT_VERSION} --abi-type C_STRUCT
       COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_BINARY_DIR}/razobill.duckdb_extension ${CMAKE_BINARY_DIR}/librazobill.duckdb_extension
       COMMENT "Signing DuckDB loadable extension metadata for community distribution" VERBATIM)
 

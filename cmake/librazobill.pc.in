@@ -13,5 +13,6 @@ includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
 Name: librazobill
 Description: High-performance C++20 log parsing and semantic accounting engine
 Version: @LIBRAZOBILL_PROJECT_VERSION@
-Libs: -L${libdir} -lrazobill
+Libs: -L${libdir} -lrazobill_cabi
+Libs.private: -L${libdir} -lrazobill_static
 Cflags: -I${includedir}

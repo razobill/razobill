@@ -34,7 +34,7 @@ from typing import Iterable, List, NamedTuple, Optional, Sequence, Union
 
 # -- dynamic library resolution on windows -------------------------------------
 
-# on windows, add package directory and system PATH to DLL search path
+# on windows, add package directory to DLL search path
 _pkg_dir = Path(__file__).resolve().parent
 if sys.platform == "win32":
     try:
@@ -42,13 +42,6 @@ if sys.platform == "win32":
     except (AttributeError, OSError, ValueError):
         # ignore unsupported directories or platforms without add_dll_directory
         pass
-    for _p in os.environ.get("PATH", "").split(os.pathsep):
-        if _p and os.path.isdir(_p):
-            try:
-                os.add_dll_directory(_p)
-            except (AttributeError, OSError, ValueError):
-                # ignore invalid or inaccessible PATH entries
-                pass
 
 # -- exception hierarchy and data records --------------------------------------
 
@@ -270,7 +263,7 @@ def RzSplitMany(lines: Iterable[Union[str, bytes]], mode: str = "semantic") -> L
     in: lines is iterable of str or bytes; mode is 'semantic' or 'exact'
     out: list of RzRecord namedtuples matching input order
     own: returns newly allocated Python list and record objects
-    thread: thread-safe; releases GIL in native C++ engine across OpenMP threads
+    thread: thread-safe; releases GIL in native C++ engine across worker thread pool
     err: raises RzError on non-str/bytes item or invalid scan mode
 
     Parameters

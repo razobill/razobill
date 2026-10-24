@@ -147,7 +147,11 @@ py::tuple splitOne(const py::object& input, const std::string& modeStr) {
         }
 
         core::SlotRecord slots;
-        Status st = core::parse(sv, slots, mode);
+        Status st;
+        {
+            py::gil_scoped_release release;
+            st = core::parse(sv, slots, mode);
+        }
         if (st != Status::Ok) {
             throw py::value_error("[razobill] What happened: Parsing failed. Why: " +
                                   std::string(razobill::describe(st)) + ". What to do: Check input data integrity.");
@@ -179,7 +183,11 @@ py::tuple splitOne(const py::object& input, const std::string& modeStr) {
         }
 
         core::SlotRecord slots;
-        Status st = core::parse(sv, slots, mode);
+        Status st;
+        {
+            py::gil_scoped_release release;
+            st = core::parse(sv, slots, mode);
+        }
         if (st != Status::Ok) {
             Py_DECREF(encoded);
             throw py::value_error("[razobill] What happened: Parsing failed. Why: " +
@@ -239,7 +247,11 @@ py::object templateOne(const py::object& input, const std::string& modeStr) {
         if (sv.empty()) return py::bytes("");
 
         core::SlotRecord slots;
-        Status st = core::parse(sv, slots, mode);
+        Status st;
+        {
+            py::gil_scoped_release release;
+            st = core::parse(sv, slots, mode);
+        }
         if (st != Status::Ok) {
             throw py::value_error("[razobill] What happened: Parsing failed. Why: " +
                                   std::string(razobill::describe(st)) + ". What to do: Check input data integrity.");
@@ -261,7 +273,11 @@ py::object templateOne(const py::object& input, const std::string& modeStr) {
         }
 
         core::SlotRecord slots;
-        Status st = core::parse(sv, slots, mode);
+        Status st;
+        {
+            py::gil_scoped_release release;
+            st = core::parse(sv, slots, mode);
+        }
         if (st != Status::Ok) {
             Py_DECREF(encoded);
             throw py::value_error("[razobill] What happened: Parsing failed. Why: " +
@@ -355,7 +371,11 @@ py::object joinOne(const py::object& tmplObj, const py::sequence& intsSeq, const
     }
 
     std::string result;
-    Status st = core::reconstruct(tmplView, ints, strViews, result);
+    Status st;
+    {
+        py::gil_scoped_release release;
+        st = core::reconstruct(tmplView, ints, strViews, result);
+    }
     if (st != Status::Ok) {
         std::string err = formatJoinError(st, tmplView);
         throw py::value_error(err);

@@ -12,7 +12,6 @@ include NOTICE
 include pyproject.toml
 include setup.py
 include PyRazobill.cpp
-include Guide.md
 
 # python package assets and type stubs
 recursive-include pyrazobill *.py py.typed *.pyi

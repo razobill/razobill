@@ -16,7 +16,7 @@ def template(input: Union[str, bytes], mode: str = "semantic") -> Union[str, byt
 # reconstruct original log message from template and parameter collections
 def join(template: Union[str, bytes], ints: Sequence[int], strs: Sequence[Union[str, bytes]]) -> Union[str, bytes]: ...
 
-# batch decompose multiple log lines releasing GIL across OpenMP worker threads
+# batch decompose multiple log lines releasing GIL across worker thread pool
 def split_many(
     inputs: Sequence[Union[str, bytes]], mode: str = "semantic"
 ) -> List[Tuple[Union[str, bytes], List[int], List[Any]]]: ...

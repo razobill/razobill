@@ -242,9 +242,7 @@ RZ_API RzStatus RzJoin(const RzRecord* record, char* outBuffer, size_t bufferCap
             return RZ_ERR_BUFFER_TOO_SMALL;
         }
 
-        if (reqLen > 0) {
-            std::memcpy(outBuffer, scratch.result.data(), reqLen);
-        }
+        std::memcpy(outBuffer, scratch.result.data(), reqLen);
         scratch.trim();
         return RZ_OK;
     } catch (const std::bad_alloc&) {
@@ -294,9 +292,7 @@ RZ_API RzStatus RzTemplate(const char* message, size_t messageLength, char* outB
             return RZ_ERR_BUFFER_TOO_SMALL;
         }
 
-        if (reqLen > 0) {
-            std::memcpy(outBuffer, scratch.slots.templateStr.data(), reqLen);
-        }
+        std::memcpy(outBuffer, scratch.slots.templateStr.data(), reqLen);
         scratch.trim();
         return RZ_OK;
     } catch (const std::bad_alloc&) {

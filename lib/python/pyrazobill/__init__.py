@@ -26,6 +26,7 @@ Quick Start:
 True
 """
 
+import contextlib
 import importlib
 import os
 import sys
@@ -39,16 +40,12 @@ _pkg_dir = Path(__file__).resolve().parent
 _dll_directories = []
 if sys.platform == "win32":
     if hasattr(os, "add_dll_directory"):
-        try:
+        with contextlib.suppress(AttributeError, OSError, ValueError):
             _dll_directories.append(os.add_dll_directory(str(_pkg_dir)))
-        except (AttributeError, OSError, ValueError):
-            pass
         for p in os.environ.get("PATH", "").split(os.pathsep):
             if p and os.path.isdir(p) and "mingw" in p.lower():
-                try:
+                with contextlib.suppress(OSError, ValueError):
                     _dll_directories.append(os.add_dll_directory(p))
-                except (OSError, ValueError):
-                    pass
 
 # -- exception hierarchy and data records --------------------------------------
 

@@ -171,7 +171,8 @@ EmbedResult embed(std::span<const MeaningChoice> sequence, std::uint64_t message
     res.payloadBits = payloadBits;
     res.embeddedMessage = message;
 
-    if (payloadBits == 0 || payloadBits > 53 || sequence.empty()) {
+    if (payloadBits == 0 || payloadBits > 53 || sequence.empty() || !std::isfinite(sharedKey) || sharedKey < 0.0 ||
+        sharedKey >= 1.0 || !std::isfinite(dither) || dither < 0.0 || dither >= 1.0) {
         res.success = false;
         return res;
     }
@@ -247,7 +248,8 @@ DecodeResult decode(std::span<const MeaningChoice> sequence, std::span<const std
     DecodeResult res;
     res.payloadBits = payloadBits;
 
-    if (payloadBits == 0 || payloadBits > 53 || sequence.empty() || observedForms.size() != sequence.size()) {
+    if (payloadBits == 0 || payloadBits > 53 || sequence.empty() || observedForms.size() != sequence.size() ||
+        !std::isfinite(sharedKey) || sharedKey < 0.0 || sharedKey >= 1.0) {
         res.success = false;
         return res;
     }
@@ -320,6 +322,12 @@ DecodeResult decode(std::span<const MeaningChoice> sequence, std::span<const std
 
     const double leftWrapped = effectiveLeft - std::floor(effectiveLeft);
     const double rightWrapped = effectiveRight - std::floor(effectiveRight);
+
+    if (!std::isfinite(leftWrapped) || !std::isfinite(rightWrapped) || leftWrapped < 0.0 ||
+        leftWrapped >= 1.0 || rightWrapped < 0.0 || rightWrapped >= 1.0) {
+        res.success = false;
+        return res;
+    }
 
     const auto cellLeft = static_cast<std::uint64_t>(std::floor(leftWrapped * numCells));
     const auto cellRight = static_cast<std::uint64_t>(std::floor(rightWrapped * numCells));

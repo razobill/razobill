@@ -89,6 +89,8 @@ struct DecodeResult {
 
 /// calculates exact failure probability via distribution convolution
 /// across positions
+/// note: exactFailureProbability assumes uniform dither distribution V ~ U[0, 1)
+///       over the unit interval; embed() uses a fixed deterministic dither (default 0.5)
 /// in: sequence strata, payloadBits
 /// out: exact analytical failure probability
 /// thread: pure, reentrant, noexcept

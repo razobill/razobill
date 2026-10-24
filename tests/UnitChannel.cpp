@@ -243,3 +243,42 @@ TEST_CASE("Channel failureProbabilityBound handles NaN and negative s") {
     CHECK(failureProbabilityBound(cap, 50, -1e12) == 1.0);
 }
 
+TEST_CASE("Channel embed and decode reject non-finite and out-of-range keys and dithers") {
+    std::vector<MeaningChoice> seq = {
+        MeaningChoice{0, {SynonymousOption{0, 0.5}, SynonymousOption{1, 0.5}}},
+        MeaningChoice{1, {SynonymousOption{0, 0.5}, SynonymousOption{1, 0.5}}}
+    };
+    std::vector<std::size_t> forms = {0, 1};
+
+    const double nanVal = std::numeric_limits<double>::quiet_NaN();
+    const double infVal = std::numeric_limits<double>::infinity();
+
+    // 1. Embed key validation
+    CHECK(!embed(seq, 0, 1, nanVal, 0.5).success);
+    CHECK(!embed(seq, 0, 1, infVal, 0.5).success);
+    CHECK(!embed(seq, 0, 1, -infVal, 0.5).success);
+    CHECK(!embed(seq, 0, 1, -0.001, 0.5).success);
+    CHECK(!embed(seq, 0, 1, 1.0, 0.5).success);
+    CHECK(!embed(seq, 0, 1, 1.5, 0.5).success);
+
+    // 2. Embed dither validation
+    CHECK(!embed(seq, 0, 1, 0.5, nanVal).success);
+    CHECK(!embed(seq, 0, 1, 0.5, infVal).success);
+    CHECK(!embed(seq, 0, 1, 0.5, -0.1).success);
+    CHECK(!embed(seq, 0, 1, 0.5, 1.0).success);
+
+    // 3. Decode key validation
+    CHECK(!decode(seq, forms, 1, nanVal).success);
+    CHECK(!decode(seq, forms, 1, infVal).success);
+    CHECK(!decode(seq, forms, 1, -0.01).success);
+    CHECK(!decode(seq, forms, 1, 1.0).success);
+    CHECK(!decode(seq, forms, 1, 1.2).success);
+
+    // 4. Valid key within [0, 1) succeeds
+    auto validEmbed = embed(seq, 1, 1, 0.25, 0.5);
+    CHECK(validEmbed.success);
+    auto validDecode = decode(seq, validEmbed.chosenForms, 1, 0.25);
+    CHECK(validDecode.success);
+    CHECK(validDecode.message == 1);
+}
+

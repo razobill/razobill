@@ -14,7 +14,7 @@ This guide shows how to enable and verify SIMD hardware vectorization (AVX-512, 
 - Supported processor:
   - x86-64 with AVX2 or AVX-512BW (Intel Haswell / AMD Zen 2 or newer)
   - AArch64 / ARM64 with NEON (AWS Graviton, Apple Silicon, Ampere Altra)
-- C++20 compiler: GCC 11+, Clang 13+, or MSVC 2022
+- C++20 compiler: GCC 12+, Clang 15+, or MSVC 2022 (v19.30+)
 - CMake 3.20 or newer
 
 ---

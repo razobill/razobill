@@ -44,7 +44,7 @@ Yes, but only during multithreaded batch processing in `split_many` (or `RzSplit
 
 ## Is Razobill thread-safe?
 
-Yes. The core C++20 parsing and reconstruction functions (`splitSlots`, `joinSlots`, `RzSplit`, `RzJoin`) are reentrant and operate on independent stack frames and thread-local buffers. No global locks or shared mutable states are used on the execution hot path.
+Yes. The core C++20 parsing and reconstruction functions (`parse`, `reconstruct`, `RzSplit`, `RzJoin`) are reentrant and operate on independent stack frames and thread-local buffers. No global locks or shared mutable states are used on the execution hot path.
 
 ---
 

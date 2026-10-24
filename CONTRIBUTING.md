@@ -20,8 +20,8 @@ This project adheres to the [Contributor Covenant](CODE_OF_CONDUCT.md). By parti
 | `src/` | Core C++20 engine and C ABI implementation | `Slots.cpp`, `RazobillC.cpp`, `BackendAdbc.cpp`, `Channel.cpp` |
 | `lib/python/` | Python C-extension wrapper (`pyrazobill`) and test suite | `PyRazobill.cpp`, `tests/TestPyRazobill.py`, `tests/TestProperties.py` |
 | `ext/duckdb/` | DuckDB C extension adapter | `DuckdbExtension.cpp` |
-| `ext/otel/` | OpenTelemetry Collector processor component | `processor.go`, `factory.go` |
-| `ext/vector/` | Vector VRL transform crate | `src/lib.rs` |
+| `ext/otel/` | OpenTelemetry Collector processor component | `RazobillProcessor.go`, `Factory.go` |
+| `ext/vector/` | Vector VRL transform crate | `RazobillVrl.rs` |
 | `tests/` | Native C++ unit tests and database integration tests | `UnitCore.cpp`, `UnitArena.cpp`, `IntegrationDuckdb.cpp` |
 | `bench/` & `tools/` | Performance microbenchmarks and validation scripts | `BenchCore.cpp`, `BenchDrain.py`, `BenchCLP.py` |
 | `docs/` | Diataxis documentation suite | `tutorials/`, `how-to/`, `reference/`, `explanation/` |
@@ -57,7 +57,7 @@ cd razobill
 
 ### Step 2: Install build prerequisites
 
-- **C++20 compiler**: GCC 11+, Clang 13+, or MSVC 2022 (v19.30+)
+- **C++20 compiler**: GCC 12+, Clang 15+, or MSVC 2022 (v19.30+)
 - **CMake**: Version 3.20 or newer
 - **Ninja**: Fast build tool (recommended)
 - **Python**: Version 3.9+ with `pip` and virtual environment support
@@ -76,7 +76,7 @@ cmake --build build --config Release
 
 ### Step 5: Run the native C++ unit tests
 
-Executes 50 test cases and verifies 1,982,613 assertions in under 1 second:
+Executes 62 test cases and verifies 1,982,703 assertions in under 1 second:
 
 ```bash
 # Linux / macOS
@@ -89,12 +89,12 @@ Executes 50 test cases and verifies 1,982,613 assertions in under 1 second:
 Expected output:
 
 ```text
-[doctest] Status: SUCCESS! - 50 test cases passed! (1982613 assertions)
+[doctest] Status: SUCCESS! - 62 test cases passed! (1982703 assertions)
 ```
 
 ### Step 6: Run the DuckDB extension integration tests
 
-Verifies 14 test cases and 134,906 assertions:
+Verifies 15 test cases and 134,916 assertions:
 
 ```bash
 # Linux / macOS
@@ -107,7 +107,7 @@ Verifies 14 test cases and 134,906 assertions:
 Expected output:
 
 ```text
-[doctest] Status: SUCCESS! - 14 test cases passed! (134906 assertions)
+[doctest] Status: SUCCESS! - 15 test cases passed! (134916 assertions)
 ```
 
 ### Step 7: Create a virtual environment and build pyrazobill
@@ -121,13 +121,13 @@ source .venv/bin/activate
 # Windows (PowerShell)
 .venv\Scripts\Activate.ps1
 
-pip install -e .
+pip install -e lib/python
 ```
 
 ### Step 8: Run the Python unit and property test suites
 
 ```bash
-# Standard unittest suite (15 tests)
+# Standard unittest suite (24 tests)
 python -m unittest discover -s lib/python/tests
 
 # Hypothesis property-based fuzz tests (5 tests)

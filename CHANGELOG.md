@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
+## [1.1.6] - 2026-10-24
+
+### Fixed
+
+- **Round-2 Hardening Audit across C++ Core, C ABI, and Language Bindings**:
+  - **W1 C++ Core Correctness & Memory Safety**: Overflow-checked size accumulation in `reconstructLegacy` and `reconstructNew`; manual-record sanity bounds (`templateLength <= 16MB`, `intCount/strCount <= templateLength/3 + 1`, `strLengths[i] <= 16MB`) in `RzJoin`; `InternalRecord` heap allocation reuse in `RzSplit`; DuckDB-style 1 MB scratch retention cap in `CAbiScratch::trim()`; pruned dead `out.skeleton` and `out.types` string building from `core::parse()` (+23% single-core throughput improvement); finite and range validation for `sharedKey` and `dither` in `Channel.cpp` with UB float-to-u64 cast prevention; fixed relational comparison with `nullptr` in `Scanner.hpp`; locale-independent `num()` via `std::to_chars` and ASCII-only `requireName`; `templateOf` raw 0x12/0x13 control byte passthrough reconstruct parity; `FormCatalog::registerForm` strong exception safety with rollback cleanup; capped `MemoryArena::allocate` alignment at 4096 bytes; serialized `AdbcBackend` cleanup under `connMutex_`.
+  - **W2 C ABI Contract Honesty**: Pinned `RZ_ABI_VERSION == 1` with compile-time `static_assert`; documented zero-initialization requirement (`rec = {0}`), shallow-copy/double-free hazards, `intValues` 8-byte alignment, `*outLength`-on-error semantics, and manual record bounds in `RazobillC.h` and `docs/reference/c-abi.md`.
+  - **W3 Language Bindings**:
+    - **Python**: Retained `os.add_dll_directory` cookies in module-level list to prevent GC unregistration on Windows; wrapped `PyUnicode_AsEncodedString` in `py::reinterpret_steal<py::bytes>` for exception-safe cleanup; single-sourced version from `VERSION`; removed hardcoded MSVC `/arch:AVX2`; synchronized MinGW static-libgcc and winpthread link flags with CMake; added native vs fallback hash parity tests.
+    - **DuckDB**: Rejected `UBIGINT >= 2^63` integers with descriptive error instead of silent narrowing; refreshed extension description and bumped version to `1.1.6` in `description.yml`; added tests for varargs `RzJoin` overloads.
+    - **OTel**: Added fast-fail ABI version gate `C.RzAbiVersion() == 1` in `Start()`; aligned empty-body behavior to emit empty template; added per-resource context cancellation checks; ran `go mod tidy` for direct `cespare/xxhash/v2` dependency.
+    - **Vector**: Set `crate-type = ["rlib"]`; deleted dead `RawRecord`; removed phantom `.hash` key from `VectorConfig.yaml`; removed unverified throughput claim; added tests for empty input and static lines.
+  - **W4 Build & CI**: Added `-fvisibility=hidden` on `razobill_cabi` shared library; added opt-in `RZ_WERROR`; wired `markdownlint-cli2`, `VerifyMarkdownLinks.py`, `LintDocs.py`, and `ruff` as enforcing CI jobs; replaced fake SBOM stub with real `sha256sum * > SHA256SUMS`; pinned release actions to commit SHAs; added `.github/CODEOWNERS`; dynamically sourced `EXTENSION_VERSION` in `Makefile`; guarded DuckDB metadata padding against silent truncation.
+  - **W5 & W6 Test Hardening & Verification**: Expanded property fuzzing alphabet to include whitespace escape characters (`\n`, `\r`, `\f`); verified 1M iterations in `FuzzDecomposeReconstruct`; verified 62 native unit tests and 15 DuckDB integration tests.
+
 ## [1.1.5] - 2026-10-24
 
 ### Fixed

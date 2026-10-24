@@ -38,7 +38,7 @@ The storage savings reported in evidence benchmarks were measured using **LocalS
 
 ## 4. Hard limit of 16 MiB per log event
 
-The core C++ engine enforces a hard message ceiling (`kMaxMessageBytes` in `librazobill/Slots.hpp`):
+The core C++ engine enforces a hard message ceiling (`kMaxMessageBytes` in `librazobill/Scanner.hpp`):
 
 - **Limit**: $16 \times 1024 \times 1024$ bytes (16 MiB).
 - **Behavior**: Passing an input string larger than 16 MiB returns `Status::TooLarge` in C++, `RZ_ERR_MESSAGE_TOO_LARGE` in the C ABI, and raises `ValueError` in Python.

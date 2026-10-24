@@ -36,6 +36,8 @@ DEPRECATED_SYMBOLS = {
     r"\bRzParse\b": "Use RzSplit instead.",
     r"\bRzReconstructSlots\b": "Use RzJoin instead.",
     r"\bRzTemplateOf\b": "Use RzTemplate instead.",
+    r"\bsplitSlots\b": "Use core::parse or RzSplit instead.",
+    r"\bjoinSlots\b": "Use core::reconstruct or RzJoin instead.",
     r"\\x12": "Use {s} placeholder instead of literal \\x12 delimiter.",
     r"\\x13": "Use {i} placeholder instead of literal \\x13 delimiter.",
 }
@@ -43,7 +45,7 @@ DEPRECATED_SYMBOLS = {
 # Allowlist for files that document deprecations or historical migrations
 DEPRECATION_ALLOWLIST = {
     "CHANGELOG.md",
-    "docs/governance/DeprecationPolicy.md",
+    "docs/reference/deprecation-policy.md",
     "docs/STYLE.md",
     "AUDIT.md",
 }

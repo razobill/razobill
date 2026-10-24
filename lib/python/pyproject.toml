@@ -11,7 +11,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyrazobill"
-version = "1.1.5"
+version = "1.1.6"
 description = "High-performance log parsing, exact lossless compaction, and information-theoretic semantic accounting library"
 readme = "README.md"
 requires-python = ">=3.9"

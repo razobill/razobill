@@ -159,9 +159,9 @@ cmake --build build
 Expected output:
 
 ```text
-Template: Failed password for root from {s} port {i}
+Template: Failed password for {s} from {s} port {i}
 Integers (1): 22 
-Strings  (1): '192.168.1.100' 
+Strings  (2): 'root' '192.168.1.100' 
 Round trip verified: exact match.
 ```
 

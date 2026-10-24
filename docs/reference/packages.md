@@ -14,7 +14,7 @@ This page lists all distribution packages, libraries, and extensions in the Razo
 | Package name | Target environment | Install or link command | Primary use case |
 | :--- | :--- | :--- | :--- |
 | **`pyrazobill`** | Python 3.9–3.13 | `pip install pyrazobill` | Python data scripts, batch pipelines, ML preprocessing |
-| **`razobill`** (DuckDB) | DuckDB 1.2.x | `INSTALL razobill FROM community;` | Analytical SQL queries, log aggregation, Parquet compaction |
+| **`razobill`** (DuckDB) | DuckDB 1.5.x | `INSTALL razobill FROM community;` | Analytical SQL queries, log aggregation, Parquet compaction |
 | **`librazobill`** (C ABI) | C, C++, Go, Rust, Zig, C# | `#include "librazobill/RazobillC.h"` | Foreign-function interfaces, high-throughput embedded services |
 | **`librazobill`** (C++20) | C++20 applications | `target_link_libraries(app PRIVATE librazobill)` | Direct in-process C++ engine embedding with zero heap overhead |
 | **`razobillprocessor`** | OpenTelemetry Collector | OpenTelemetry Collector Builder manifest | Edge telemetry reduction, stripping verbose string bodies |

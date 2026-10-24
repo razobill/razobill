@@ -45,13 +45,18 @@ namespace {
 /// out     reference to active ThreadPool instance
 /// thread  thread-safe via static allocation and std::call_once
 core::ThreadPool& getThreadPool() {
-    static core::ThreadPool* pool = new core::ThreadPool();
+    static core::ThreadPool* pool = []() {
+        auto* p = new core::ThreadPool();
+        p->detachWorkers();
+        return p;
+    }();
     static std::once_flag initFork;
     std::call_once(initFork, [] {
 #ifndef _WIN32
         // ~ resets pool on fork so child workers do not inherit locked mutexes or dead parent thread IDs
         pthread_atfork(nullptr, nullptr, [] {
             pool = new core::ThreadPool();
+            pool->detachWorkers();
         });
 #endif
     });

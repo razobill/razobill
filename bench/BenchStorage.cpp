@@ -38,8 +38,9 @@ static double timestampNow() {
  */
 static std::unique_ptr<Backend> openDatabaseFile(const std::string& path) {
     auto options = support::duckdbOptions();
-    fs::remove(path);
-    fs::remove(path + ".wal");
+    std::error_code ec;
+    fs::remove(path, ec);
+    fs::remove(path + ".wal", ec);
     options.databaseOptions = {{"path", path}, {"allow_unsigned_extensions", "true"}};
     return makeAdbcBackend(options);
 }
@@ -78,36 +79,78 @@ static double computeMedian(std::vector<double> values) {
  * err: returns 1 on verification failure, 0 on success
  */
 int main(int argc, char** argv) {
-    const char* corpusParquet = argc > 1 ? argv[1] : "/tmp/corpus.parquet";
-    if (!fs::exists(corpusParquet)) {
-        std::printf("[BENCH] Warning: Corpus parquet '%s' not found.\n"
-                    "        Generating placeholder or pass path via argument.\n",
-                    corpusParquet);
+    std::string corpusPath;
+    if (argc > 1) {
+        corpusPath = argv[1];
+    } else {
+        const std::vector<std::string> candidates = {
+            "build/corpus.parquet",
+            (fs::temp_directory_path() / "corpus.parquet").generic_string(),
+            "/tmp/corpus.parquet",
+            "logs/corpus.parquet"
+        };
+        for (const auto& c : candidates) {
+            if (fs::exists(c)) {
+                corpusPath = c;
+                break;
+            }
+        }
+        if (corpusPath.empty()) {
+            corpusPath = "build/corpus.parquet";
+        }
+    }
+
+    if (!fs::exists(corpusPath)) {
+        std::printf("[BENCH] Warning: Corpus file '%s' not found.\n"
+                    "        Pass path via argument (e.g. build/corpus.parquet or logs/SSH/SSH.log).\n",
+                    corpusPath.c_str());
     }
 
     const auto dialect = makeDialect(Flavor::DuckDB);
-    const std::string quotedParquet = dialect->quote(corpusParquet);
+    const std::string quotedCorpus = dialect->quote(fs::path(corpusPath).generic_string());
+
+    const bool isParquet = fs::path(corpusPath).extension() == ".parquet";
+    const std::string loadSql = isParquet
+        ? "SELECT * FROM read_parquet(" + quotedCorpus + ")"
+        : "SELECT '' AS sys, '' AS level, '' AS comp, column0 AS msg FROM read_csv(" + quotedCorpus +
+              ", delim=NULL, header=False, columns={'column0': 'VARCHAR'}, auto_detect=False)";
+
+    const std::string rawDbPath = (fs::temp_directory_path() / "bs_raw.db").generic_string();
+    const std::string addDbPath = (fs::temp_directory_path() / "bs_add.db").generic_string();
+    const std::string cmpDbPath = (fs::temp_directory_path() / "bs_cmp.db").generic_string();
+    const std::string timeDbPath = (fs::temp_directory_path() / "bs_time.db").generic_string();
+
+    auto cleanupDbs = [&]() {
+        for (const auto& p : {rawDbPath, addDbPath, cmpDbPath, timeDbPath}) {
+            std::error_code ec;
+            fs::remove(p, ec);
+            fs::remove(p + ".wal", ec);
+        }
+    };
+    cleanupDbs();
 
     std::vector<double> rawBytesRuns, additiveBytesRuns, compactBytesRuns;
     double compactLoadSeconds = 0.0, additiveLoadSeconds = 0.0;
+    std::size_t lastRowCount = 0;
 
     std::printf("========================================================================================\n");
     std::printf("RAZOBILL DUCKDB PHYSICAL STORAGE COMPACTION BENCHMARK (256 KiB BLOCKS)\n");
+    std::printf("Corpus: %s\n", corpusPath.c_str());
     std::printf("========================================================================================\n");
     std::printf("Testing 5 independent physical runs per layout to establish median confidence intervals...\n\n");
 
     for (int run = 0; run < 5; ++run) {
         // Run 1: Raw Unstructured VARCHAR Layout
         {
-            auto backend = openDatabaseFile("/tmp/bs_raw.db");
-            backend->exec("CREATE TABLE logs AS SELECT * FROM read_parquet(" + quotedParquet + ")");
+            auto backend = openDatabaseFile(rawDbPath);
+            backend->exec("CREATE TABLE logs AS " + loadSql);
             rawBytesRuns.push_back(static_cast<double>(measureDatabaseBytes(*backend)));
         }
 
         // Run 2: Additive Indexing Layout (Raw string + 64-bit form hash)
         {
-            auto backend = openDatabaseFile("/tmp/bs_add.db");
-            backend->exec("CREATE TABLE logs AS SELECT * FROM read_parquet(" + quotedParquet + ")");
+            auto backend = openDatabaseFile(addDbPath);
+            backend->exec("CREATE TABLE logs AS " + loadSql);
             RazobillEngine engine(*backend, {.table = "logs", .purpose = "level"});
             const double t0 = timestampNow();
             engine.refresh();
@@ -117,17 +160,17 @@ int main(int argc, char** argv) {
 
         // Run 3: Full Razobill Columnar Compact Decomposed Layout
         {
-            auto backend = openDatabaseFile("/tmp/bs_cmp.db");
-            backend->exec("CREATE TEMP TABLE src AS SELECT * FROM read_parquet(" + quotedParquet + ")");
+            auto backend = openDatabaseFile(cmpDbPath);
+            backend->exec("CREATE TEMP TABLE src AS " + loadSql);
             RazobillEngine engine(*backend, {.table = "logs", .purpose = "level"});
             const double t0 = timestampNow();
-            engine.compact("src");
+            lastRowCount = engine.compact("src");
             compactLoadSeconds = timestampNow() - t0;
 
-            // Invariant check: verify that every single reconstructed log
-            // matches bit-for-bit
+            // Invariant check: verify that every single reconstructed log matches bit-for-bit
             if (engine.verify("src") != 0) {
                 std::puts("[BENCH] CRITICAL ERROR: VERIFY FAILED! Invertibility violated.");
+                cleanupDbs();
                 return 1;
             }
             compactBytesRuns.push_back(static_cast<double>(measureDatabaseBytes(*backend)));
@@ -160,19 +203,21 @@ int main(int argc, char** argv) {
                     *std::min_element(rawBytesRuns.begin(), rawBytesRuns.end()),
                 *std::min_element(compactBytesRuns.begin(), compactBytesRuns.end()) /
                     *std::max_element(rawBytesRuns.begin(), rawBytesRuns.end()));
-    std::printf("Ingestion: Additive Refresh %.2fs  |  Compact Decompose %.2fs (134,815 rows)\n", additiveLoadSeconds,
-                compactLoadSeconds);
+    std::printf("Ingestion: Additive Refresh %.2fs  |  Compact Decompose %.2fs (%llu rows)\n", additiveLoadSeconds,
+                compactLoadSeconds, static_cast<unsigned long long>(lastRowCount));
 
     // =========================================================================
-    // Query Execution Latency Audit (Replicated 8x = ~1.08 Million Rows)
+    // Query Execution Latency Audit
     // =========================================================================
     std::printf("\n========================================================================================\n");
-    std::printf("VECTORIZED SQL QUERY LATENCY AUDIT (1.08 MILLION ROWS, SINGLE CPU CORE)\n");
+    std::printf("VECTORIZED SQL QUERY LATENCY AUDIT\n");
     std::printf("========================================================================================\n");
 
-    auto timeBackend = openDatabaseFile("/tmp/bs_time.db");
-    timeBackend->exec("CREATE TABLE one AS SELECT * FROM read_parquet(" + quotedParquet + ")");
-    timeBackend->exec("CREATE TEMP TABLE src AS SELECT o.* FROM one o, range(8)");
+    auto timeBackend = openDatabaseFile(timeDbPath);
+    timeBackend->exec("CREATE TABLE one AS " + loadSql);
+    const auto baseRows = timeBackend->query("SELECT count(*) FROM one").i64(0, 0);
+    const int replication = baseRows > 200000 ? 1 : 8;
+    timeBackend->exec("CREATE TEMP TABLE src AS SELECT o.* FROM one o, range(" + std::to_string(replication) + ")");
     timeBackend->exec("CREATE TABLE raw AS SELECT * FROM src");
 
     RazobillEngine engine(*timeBackend, {.table = "logs", .purpose = "level"});
@@ -183,8 +228,8 @@ int main(int argc, char** argv) {
     engine.define("SSH_PASSWORD_FAIL", "^Failed password for");
     engine.define("HDFS_RECEIVING", R"(^Receiving block <\*> src: )");
 
-    std::printf("Replicated Table: %llu rows, Compact Ingestion Time: %.2fs (%.0f rows/sec)\n\n",
-                static_cast<unsigned long long>(rowCount), compactionTime,
+    std::printf("Replicated Table: %llu rows (%dx replication), Compact Ingestion Time: %.2fs (%.0f rows/sec)\n\n",
+                static_cast<unsigned long long>(rowCount), replication, compactionTime,
                 static_cast<double>(rowCount) / (compactionTime > 0 ? compactionTime : 1.0));
 
     // Measures query latency across 5 runs, reporting the median
@@ -227,5 +272,6 @@ int main(int argc, char** argv) {
               "SELECT msg FROM logs_m WHERE meaning = 'SSH_PASSWORD_FAIL' LIMIT 1000");
 
     std::printf("========================================================================================\n");
+    cleanupDbs();
     return 0;
 }

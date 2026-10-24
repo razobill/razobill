@@ -83,6 +83,14 @@ public:
     ThreadPool(const ThreadPool&) = delete;
     ThreadPool& operator=(const ThreadPool&) = delete;
 
+    /// detaches all background worker threads
+    /// inv: allows process exit without waiting for worker thread joins
+    void detachWorkers() {
+        for (auto& worker : workers_) {
+            if (worker.joinable()) worker.detach();
+        }
+    }
+
     /// submit nullary callable to the task queue
     /// in: callable f
     /// out: std::future holding return value of f

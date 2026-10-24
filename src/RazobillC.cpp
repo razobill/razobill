@@ -45,6 +45,10 @@ RZ_API RzStatus RzSplit(const char* message, size_t messageLength, RzRecord* out
     if (!outRecord) return RZ_ERR_INVALID_ARGUMENT;
     if (!message && messageLength > 0) return RZ_ERR_INVALID_ARGUMENT;
 
+    if (outRecord->internalHandle) {
+        delete static_cast<InternalRecord*>(outRecord->internalHandle);
+        outRecord->internalHandle = nullptr;
+    }
     std::memset(outRecord, 0, sizeof(RzRecord));
 
     if (messageLength == 0) {
@@ -111,7 +115,11 @@ RZ_API RzStatus RzJoin(const RzRecord* record, char* outBuffer, size_t bufferCap
             intSpan = std::span<const int64_t>(record->intValues, record->intCount);
         }
 
-        std::vector<std::string_view> strViews;
+        thread_local std::vector<std::string_view> strViews;
+        thread_local std::string result;
+        strViews.clear();
+        result.clear();
+
         strViews.reserve(record->strCount);
         for (size_t i = 0; i < record->strCount; ++i) {
             const char* sPtr = record->strValues[i];
@@ -120,7 +128,6 @@ RZ_API RzStatus RzJoin(const RzRecord* record, char* outBuffer, size_t bufferCap
             strViews.emplace_back(sPtr ? sPtr : "", sLen);
         }
 
-        std::string result;
         const razobill::Status status = razobill::core::reconstruct(tmplView, intSpan, strViews, result);
         if (status != razobill::Status::Ok) {
             if (status == razobill::Status::SlotUnderflow || status == razobill::Status::SlotOverflow)
@@ -132,6 +139,10 @@ RZ_API RzStatus RzJoin(const RzRecord* record, char* outBuffer, size_t bufferCap
 
         const size_t reqLen = result.size();
         if (outLength) *outLength = reqLen;
+
+        if (reqLen == 0) {
+            return RZ_OK;
+        }
 
         if (!outBuffer || bufferCapacity < reqLen) {
             return RZ_ERR_BUFFER_TOO_SMALL;
@@ -163,7 +174,8 @@ RZ_API RzStatus RzTemplate(const char* message, size_t messageLength, char* outB
             return RZ_OK;
         }
 
-        razobill::core::SlotRecord slots;
+        thread_local razobill::core::SlotRecord slots;
+        slots.clear();
         const std::string_view msgView(message, messageLength);
         const razobill::Status status = razobill::core::parse(msgView, slots, razobill::core::ScanMode::Semantic);
         if (status != razobill::Status::Ok) {
@@ -174,6 +186,10 @@ RZ_API RzStatus RzTemplate(const char* message, size_t messageLength, char* outB
 
         const size_t reqLen = slots.templateStr.size();
         if (outLength) *outLength = reqLen;
+
+        if (reqLen == 0) {
+            return RZ_OK;
+        }
 
         if (!outBuffer || bufferCapacity < reqLen) {
             return RZ_ERR_BUFFER_TOO_SMALL;

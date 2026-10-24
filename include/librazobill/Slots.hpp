@@ -61,7 +61,7 @@ struct SlotRecord {
     /// inv: bit-identical with Python pyrazobill, DuckDB RzHash, and
     ///      ClickHouse xxHash64
     /// out: 64-bit integer hash
-    [[nodiscard]] std::uint64_t formKeyHash() const noexcept { return xxh64(formKey()); }
+    [[nodiscard]] std::uint64_t formKeyHash() const noexcept { return xxh64(templateStr); }
 
     /// legacy snake_case alias for formKey
     void form_key(std::string& out) const { formKey(out); }

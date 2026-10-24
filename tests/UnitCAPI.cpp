@@ -161,3 +161,25 @@ TEST_CASE("Universal C ABI: Edge cases, empty string, errors and metadata") {
     CHECK(std::string(RzVersion()) == "1.1.4");
     CHECK(RzAbiVersion() == 1);
 }
+
+TEST_CASE("Universal C ABI: zero-length probe and contract edge cases") {
+    RzRecord rec;
+    std::memset(&rec, 0, sizeof(rec));
+    REQUIRE(RzSplit("", 0, &rec) == RZ_OK);
+    size_t reqLen = 999;
+    CHECK(RzJoin(&rec, nullptr, 0, &reqLen) == RZ_OK);
+    CHECK(reqLen == 0);
+    RzFree(&rec);
+
+    // Defensive reuse without RzFree
+    std::memset(&rec, 0, sizeof(rec));
+    REQUIRE(RzSplit("test 123", 8, &rec) == RZ_OK);
+    REQUIRE(RzSplit("second 456", 10, &rec) == RZ_OK);
+    RzFree(&rec);
+
+    // Probe RzTemplate with 0-capacity
+    reqLen = 999;
+    CHECK(RzTemplate("", 0, nullptr, 0, &reqLen) == RZ_OK);
+    CHECK(reqLen == 0);
+}
+

@@ -310,6 +310,11 @@ jobs:
             mingw-w64-ucrt-x86_64-cmake
             mingw-w64-ucrt-x86_64-python
             mingw-w64-ucrt-x86_64-python-pip
+            mingw-w64-ucrt-x86_64-python-setuptools
+            mingw-w64-ucrt-x86_64-python-wheel
+            mingw-w64-ucrt-x86_64-pybind11
+            mingw-w64-ucrt-x86_64-python-pytest
+            mingw-w64-ucrt-x86_64-python-hypothesis
 
       - name: Build C++ Core and Unit Tests under MinGW-w64
         shell: msys2 {0}
@@ -325,8 +330,7 @@ jobs:
       - name: Install Python Package under MinGW
         shell: msys2 {0}
         run: |
-          pip install --upgrade pip pybind11 pytest hypothesis
-          pip install -e lib/python
+          pip install --no-build-isolation --no-deps -e lib/python || pip install --break-system-packages --no-build-isolation --no-deps -e lib/python
 
       - name: Run Python Tests under MinGW
         shell: msys2 {0}

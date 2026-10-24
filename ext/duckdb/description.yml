@@ -21,9 +21,9 @@ extension:
 # upstream git repository coordinates and tagged release reference
 repo:
   github: razobill/razobill
-  ref: fcca83c7464eba82431627ad58e1db79f59ef664
-  variegata: fcca83c7464eba82431627ad58e1db79f59ef664
-  andium: fcca83c7464eba82431627ad58e1db79f59ef664
+  ref: e9ce241988d5a055db9a8d3758efcb781ea96739
+  variegata: e9ce241988d5a055db9a8d3758efcb781ea96739
+  andium: e9ce241988d5a055db9a8d3758efcb781ea96739
 
 # documentation and sql usage examples published on DuckDB community portal
 docs:

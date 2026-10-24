@@ -14,9 +14,9 @@ This document specifies the verification gates, signing protocols, and distribut
 Every release candidate must complete this automated verification checklist before publication:
 
 1. **Unit and regression test gates**:
-   - All 50 C++ unit test cases must pass with zero failures (`build/UnitTests.exe`), verifying over 1.98 million assertions.
-   - All 15 Python unit tests and 5 Hypothesis property tests must pass cleanly under target runtimes (`3.9` through `3.13`).
-   - All 14 DuckDB extension integration tests must pass (`build/IntegrationDuckdb.exe`).
+   - All 59 C++ unit test cases must pass with zero failures (`build/UnitTests.exe`), verifying over 1.98 million assertions.
+   - All 23 Python unit tests and 5 Hypothesis property tests must pass cleanly under target runtimes (`3.9` through `3.13`).
+   - All 15 DuckDB extension integration tests must pass (`build/IntegrationDuckdb.exe`), verifying over 134,000 assertions.
    - Cargo integration tests in `ext/vector` and Go tests in `ext/otel` must pass.
 2. **Quality and linting gates**:
    - `python tools/LintDocs.py README.md CONTRIBUTING.md docs/` must pass with zero errors.

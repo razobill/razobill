@@ -28,6 +28,30 @@ struct InternalRecord {
     std::vector<size_t> strLengths;
 };
 
+struct CAbiScratch {
+    razobill::core::SlotRecord slots;
+    std::vector<std::string_view> strViews;
+    std::string result;
+};
+
+#if defined(__MINGW32__) || defined(__MINGW64__)
+// On MinGW-w64, thread_local objects with non-trivial destructors trigger a known
+// runtime heap corruption bug (0xc0000374) in tls_atexit.c upon worker thread exit.
+// Using a pointer type avoids registering destructors with __cxa_thread_atexit.
+CAbiScratch& getCAbiScratch() {
+    thread_local CAbiScratch* p = nullptr;
+    if (!p) {
+        p = new CAbiScratch();
+    }
+    return *p;
+}
+#else
+CAbiScratch& getCAbiScratch() {
+    thread_local CAbiScratch s;
+    return s;
+}
+#endif
+
 } // namespace
 
 // -- exported c abi functions -------------------------------------------------
@@ -115,20 +139,20 @@ RZ_API RzStatus RzJoin(const RzRecord* record, char* outBuffer, size_t bufferCap
             intSpan = std::span<const int64_t>(record->intValues, record->intCount);
         }
 
-        thread_local std::vector<std::string_view> strViews;
-        thread_local std::string result;
-        strViews.clear();
-        result.clear();
+        auto& scratch = getCAbiScratch();
+        scratch.strViews.clear();
+        scratch.result.clear();
 
-        strViews.reserve(record->strCount);
+        scratch.strViews.reserve(record->strCount);
         for (size_t i = 0; i < record->strCount; ++i) {
             const char* sPtr = record->strValues[i];
             const size_t sLen = record->strLengths[i];
             if (!sPtr && sLen > 0) return RZ_ERR_INVALID_ARGUMENT;
-            strViews.emplace_back(sPtr ? sPtr : "", sLen);
+            scratch.strViews.emplace_back(sPtr ? sPtr : "", sLen);
         }
 
-        const razobill::Status status = razobill::core::reconstruct(tmplView, intSpan, strViews, result);
+        const razobill::Status status =
+            razobill::core::reconstruct(tmplView, intSpan, scratch.strViews, scratch.result);
         if (status != razobill::Status::Ok) {
             if (status == razobill::Status::SlotUnderflow || status == razobill::Status::SlotOverflow)
                 return RZ_ERR_COUNT_MISMATCH;
@@ -137,7 +161,7 @@ RZ_API RzStatus RzJoin(const RzRecord* record, char* outBuffer, size_t bufferCap
             return RZ_ERR_INVALID_ARGUMENT;
         }
 
-        const size_t reqLen = result.size();
+        const size_t reqLen = scratch.result.size();
         if (outLength) *outLength = reqLen;
 
         if (reqLen == 0) {
@@ -149,7 +173,7 @@ RZ_API RzStatus RzJoin(const RzRecord* record, char* outBuffer, size_t bufferCap
         }
 
         if (reqLen > 0) {
-            std::memcpy(outBuffer, result.data(), reqLen);
+            std::memcpy(outBuffer, scratch.result.data(), reqLen);
         }
         return RZ_OK;
     } catch (const std::bad_alloc&) {
@@ -174,17 +198,18 @@ RZ_API RzStatus RzTemplate(const char* message, size_t messageLength, char* outB
             return RZ_OK;
         }
 
-        thread_local razobill::core::SlotRecord slots;
-        slots.clear();
+        auto& scratch = getCAbiScratch();
+        scratch.slots.clear();
         const std::string_view msgView(message, messageLength);
-        const razobill::Status status = razobill::core::parse(msgView, slots, razobill::core::ScanMode::Semantic);
+        const razobill::Status status =
+            razobill::core::parse(msgView, scratch.slots, razobill::core::ScanMode::Semantic);
         if (status != razobill::Status::Ok) {
             if (status == razobill::Status::TooLarge) return RZ_ERR_MESSAGE_TOO_LARGE;
             if (status == razobill::Status::Malformed) return RZ_ERR_MALFORMED_TEMPLATE;
             return RZ_ERR_INVALID_ARGUMENT;
         }
 
-        const size_t reqLen = slots.templateStr.size();
+        const size_t reqLen = scratch.slots.templateStr.size();
         if (outLength) *outLength = reqLen;
 
         if (reqLen == 0) {
@@ -196,7 +221,7 @@ RZ_API RzStatus RzTemplate(const char* message, size_t messageLength, char* outB
         }
 
         if (reqLen > 0) {
-            std::memcpy(outBuffer, slots.templateStr.data(), reqLen);
+            std::memcpy(outBuffer, scratch.slots.templateStr.data(), reqLen);
         }
         return RZ_OK;
     } catch (const std::bad_alloc&) {

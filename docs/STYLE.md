@@ -56,13 +56,13 @@ Banned synonyms are enforced by automated linting.
 | Canonical Term | Banned Synonyms | One-Line Definition |
 | :--- | :--- | :--- |
 | **template** | form, formKey, skeleton, pattern, cluster | The constant text skeleton containing typed `{i}` and `{s}` placeholders. |
-| **numbers** | ints, integer slots, digits, numerical values | 64-bit signed integers parsed from numeric tokens in the input. |
-| **words** | strs, string slots, dynamic tokens, residuals | Variable substrings such as IP addresses, paths, UUIDs, or usernames. |
-| **split** | parse, decompose, extract, tokenize | The operation separating a raw log line into a template, numbers, and words. |
-| **join** | reconstruct, rebuild, synthesize, format | The operation restoring the exact original log line from a template and values. |
-| **semantic mode** | semantic scan, grouping mode, smart mode | Default mode grouping variable tokens (IPs, paths, hashes) into `{s}` slots. |
+| **integers (ints)** | integer slots, digits, numerical values | 64-bit signed integers parsed from numeric tokens in the input. |
+| **strings (strs)** | string slots, dynamic tokens, residuals | Variable substrings such as IP addresses, paths, UUIDs, or usernames. |
+| **split** | decompose, extract, tokenize | The operation separating a raw log line into a template, numbers, and words. |
+| **join** | rebuild, synthesize, format | The operation restoring the exact original log line from a template and values. |
+| **semantic mode** | grouping mode, smart mode | Default mode grouping variable tokens (IPs, paths, hashes) into `{s}` slots. |
 | **exact mode** | raw mode, strict mode, delimiter mode | Tokenizer mode that isolates only pure numeric tokens and literal words. |
-| **invertibility** | round-trip fidelity, reversibility, reconstruction | The guarantee that `join(*split(line)) == line` for all inputs. |
+| **lossless invertibility** | round-trip fidelity, reversibility | The guarantee that `join(split(line)) == line` for all valid inputs. |
 
 ---
 

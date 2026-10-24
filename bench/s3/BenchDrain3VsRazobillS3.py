@@ -261,12 +261,16 @@ def runHeadToHeadBenchmark(
         if HAS_PYRAZOBILL and hasattr(pyrazobill, "auditParallel"):
             audit_res = pyrazobill.auditParallel(corpus, numThreads=threads)
             cpp_tput = audit_res.msgsPerSec
+            speedup_cpp = cpp_tput / drain_tput if drain_tput > 0 else 1.0
+            print(f"    - Razobill C++ SIMD ({threads} Cores) : {cpp_tput:,.0f} logs/s ({speedup_cpp:.1f}x vs Drain3)")
         else:
-            cpp_tput = 69400000.0
+            raise RuntimeError(
+                "Native multi-core C++ benchmark requested but pyrazobill.auditParallel is unavailable. "
+                "Fabricated throughput fallback removed per AGENTS.md honesty rules."
+            )
 
         speedup_1t = rb_tput_1t / drain_tput if drain_tput > 0 else 1.0
         speedup_mt = rb_tput_mt / drain_tput if drain_tput > 0 else 1.0
-        speedup_cpp = cpp_tput / drain_tput if drain_tput > 0 else 1.0
 
         print(
             f"    - Razobill Python (1 Thread) : {rb_tput_1t:,.0f} logs/s ({t_rb_1t * 1000:.1f} ms, {speedup_1t:.1f}x vs Drain3)"
@@ -274,7 +278,6 @@ def runHeadToHeadBenchmark(
         print(
             f"    - Razobill Python ({threads} Threads): {rb_tput_mt:,.0f} logs/s ({t_rb_mt * 1000:.1f} ms, {speedup_mt:.1f}x vs Drain3)"
         )
-        print(f"    - Razobill C++ SIMD ({threads} Cores) : {cpp_tput:,.0f} logs/s ({speedup_cpp:.1f}x vs Drain3)")
 
         # ---------------------------------------------------------------------
         # 3. Stream Parquet Outputs to S3 (Multi-Threaded DuckDB)

@@ -34,3 +34,5 @@ ignores:
   - ".git/**"
   - "extension-ci-tools/**"
   - ".superpowers/**"
+  - ".zcode/**"
+  - "docs/superpowers/**"

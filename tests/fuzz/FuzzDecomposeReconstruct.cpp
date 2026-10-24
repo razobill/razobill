@@ -102,7 +102,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
         size_t requiredLen = 0;
         const RzStatus probeCode = RzJoin(&crec, nullptr, 0, &requiredLen);
         if (probeCode != RZ_ERR_BUFFER_TOO_SMALL || requiredLen != size) {
-            std::cerr << "FUZZ ERROR: C-ABI RzJoin probing failed\n";
+            std::cerr << "FUZZ ERROR: C-ABI RzJoin probing failed, got " << probeCode << ", requiredLen=" << requiredLen << ", expected=" << size << "\n";
             RzFree(&crec);
             std::abort();
         }

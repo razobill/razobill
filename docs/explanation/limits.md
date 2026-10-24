@@ -24,7 +24,7 @@ Razobill is designed for exact algebraic decomposition rather than unsupervised 
 
 All performance figures, throughput numbers, and compression ratios published in these docs and in `evidence/` were collected on a single workstation:
 
-- **Hardware**: Windows 11, Intel 6-Core / 12-Thread CPU, 32 GB RAM.
+- **Hardware**: Windows 11, Intel 6-Core / 12-Thread CPU, 7.78 GB RAM (8 GB physical).
 - **Verification status**: Every test script is checked into the repository (`tools/BenchDrain.py`, `tools/BenchCLP.py`, `bench/BenchCore.cpp`), but external multi-cloud validation on Linux server fleets has not been independently published.
 - **Recommendation**: Run `tools/BenchDrain.py` and `./build/BenchCore` on your target hardware to measure throughput in your deployment environment.
 
@@ -38,10 +38,10 @@ The storage savings reported in evidence benchmarks were measured using **LocalS
 
 ## 4. Hard limit of 16 MiB per log event
 
-The core C++ engine enforces a hard message ceiling (`kMaxMessageBytes` in `Status.hpp`):
+The core C++ engine enforces a hard message ceiling (`kMaxMessageBytes` in `librazobill/Slots.hpp`):
 
 - **Limit**: $16 \times 1024 \times 1024$ bytes (16 MiB).
-- **Behavior**: Passing an input string larger than 16 MiB returns `Status::MessageTooLarge` in C++, `RZ_ERR_MESSAGE_TOO_LARGE` in the C ABI, and raises `ValueError` in Python.
+- **Behavior**: Passing an input string larger than 16 MiB returns `Status::TooLarge` in C++, `RZ_ERR_MESSAGE_TOO_LARGE` in the C ABI, and raises `ValueError` in Python.
 - **Rationale**: Prevents malicious or corrupted payloads from triggering unbounded memory allocations in monotonic arenas.
 
 ---

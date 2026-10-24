@@ -10,7 +10,7 @@ Skip this article if you only need the developer guides.
 
 ## Benchmark environment
 
-All benchmarks reported below were measured on a single Windows 11 machine with 12 logical cores and 32 GB RAM.
+All benchmarks reported below were measured on a single Windows 11 machine with 12 logical cores and 7.78 GB RAM (8 GB physical).
 Results were collected using the reproduction scripts in [`tools/BenchDrain.py`](../../tools/BenchDrain.py), [`tools/BenchCLP.py`](../../tools/BenchCLP.py), and the experimental apparatus documented in [`evidence/README.md`](../../evidence/README.md).
 
 ---
@@ -146,7 +146,7 @@ For a complete audit of benchmark constraints, hardware details, clustering trad
 Key operational takeaways:
 
 1. **Clustering accuracy**: Razobill retains more templates than Drain3 (median 70.5 vs 45.5 clusters) and has a lower grouping accuracy (0.808 vs 0.871) because it preserves variable tokens for lossless reconstruction.
-2. **Author-run measurements**: All benchmarks were measured on a single workstation (Windows 11, Intel 6-Core / 12-Thread, 32 GB RAM). Run `tools/BenchDrain.py` on your own hardware to verify numbers.
+2. **Author-run measurements**: All benchmarks were measured on a single workstation (Windows 11, Intel 6-Core / 12-Thread, 7.78 GB RAM). Run `tools/BenchDrain.py` on your own hardware to verify numbers.
 3. **S3 cost models**: Measured using LocalStack and simulated cost equations rather than production billing statements.
 
 ---

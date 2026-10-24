@@ -42,6 +42,13 @@ if sys.platform == "win32":
     except (AttributeError, OSError, ValueError):
         # ignore unsupported directories or platforms without add_dll_directory
         pass
+    if hasattr(os, "add_dll_directory"):
+        for p in os.environ.get("PATH", "").split(os.pathsep):
+            if p and os.path.isdir(p) and "mingw" in p.lower():
+                try:
+                    os.add_dll_directory(p)
+                except (OSError, ValueError):
+                    pass
 
 # -- exception hierarchy and data records --------------------------------------
 
@@ -345,7 +352,7 @@ def RzHash(line: Union[str, bytes]) -> int:
 
 # -- package metadata and public symbols ---------------------------------------
 
-__version__ = "1.1.4"
+__version__ = "1.1.5"
 
 # public export surface pinned to <= 8 symbols per TestPyRazobill compliance
 __all__ = [

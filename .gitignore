@@ -130,3 +130,4 @@ gmon.out
 *.serena
 target/
 .superpowers/
+.zcode/

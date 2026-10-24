@@ -24,6 +24,14 @@ The C++20 engine is declared in `include/librazobill/`:
 | `StringPool.hpp` | String interning pool with generational compaction |
 | `ThreadPool.hpp` | Work-stealing worker thread pool for parallel batch auditing |
 | `Hash.hpp` | 64-bit unsigned hash functions (`xxh64`) |
+| `Lifetime.hpp` | Compile-time lifetime safety attributes (`RZ_LIFETIMEBOUND`, `RZ_NOESCAPE`) |
+| `Backend.hpp` | Abstract database control plane interface (`Backend`, `Table`, `AdbcOptions`) |
+| `Dialect.hpp` | SQL expression dialects for DuckDB and ClickHouse |
+| `FormCatalog.hpp` | Thread-safe dictionary cache and collision-resistant template registry |
+| `Stats.hpp` | Information-theoretic ledger, entropy, leakage, and divergence |
+| `Channel.hpp` | Steganographic and provenance channel over synonymous template choices |
+| `Razobill.hpp` | Central engine coordinator for database compaction and verification |
+| `RazobillC.h` | Universal C ABI declarations and status codes |
 
 ---
 
@@ -122,6 +130,85 @@ Allows batch operations to allocate scratch memory without heap fragmentation:
 
 - `void* allocate(std::size_t bytes)`: Allocates aligned memory.
 - `void reset() noexcept`: Resets the bump pointer to zero without releasing underlying virtual memory blocks.
+
+### StringPool
+
+Thread-safe string interning pool with generational mark-and-sweep garbage collection (`include/librazobill/StringPool.hpp`):
+
+- `std::uint32_t intern(std::string_view sv)`: Interns a string and returns a dense 32-bit ID.
+- `std::string_view resolve(std::uint32_t id) const`: Resolves an ID to its string view.
+- `StringPoolStats gc(std::span<const std::uint32_t> rootIds)`: Purges unreferenced strings.
+
+---
+
+## Concurrency and lifetime primitives
+
+### ThreadPool
+
+Work-stealing task execution pool amortizing queue contention across coarse chunks (`include/librazobill/ThreadPool.hpp`):
+
+- `explicit ThreadPool(std::size_t threadCount)`: Initializes workers.
+- `std::future<T> submit(F&& func)`: Enqueues a task and returns an asynchronous future.
+
+### Lifetime annotations
+
+Macro contracts for compile-time escape and lifetime analysis (`include/librazobill/Lifetime.hpp`):
+
+- `RZ_LIFETIMEBOUND`: Enforces that caller-supplied views do not outlive referenced buffers.
+- `RZ_NOESCAPE`: Ensures pointer parameters are not retained beyond function scope.
+
+---
+
+## Database control plane
+
+### Backend and Table
+
+Database abstraction layer (`include/librazobill/Backend.hpp`):
+
+- `class Backend`: Abstract base for executing queries (`exec`, `query`). Thread-safe in `AdbcBackend` via internal mutex.
+- `struct Table`: Relational query results with typed accessors (`i64`, `u64`, `f64`, `str`, `isNull`).
+- `std::unique_ptr<Backend> makeAdbcBackend(const AdbcOptions& options)`: Instantiates an ADBC database driver.
+
+### SQL Dialects
+
+Engine-specific SQL dialect generation (`include/librazobill/Dialect.hpp`):
+
+- `class DuckDialect`: Generates DuckDB SQL for template extraction, array reconstruction, and array concatenation.
+- `class ClickHouseDialect`: Generates ClickHouse SQL using `arrayStringConcat(arrayZipWith(...))`.
+
+### FormCatalog
+
+Thread-safe registry mapping template strings to dense 32-bit IDs with full string comparison on hash collisions (`include/librazobill/FormCatalog.hpp`):
+
+- `std::uint32_t registerForm(std::string_view templateStr)`: Registers a template and returns a unique sequential ID.
+- `std::optional<FormEntry> lookup(std::uint32_t id) const`: Looks up template metadata.
+
+---
+
+## Information theory and channels
+
+### Statistical accounting
+
+Ledger metrics and conservation identities (`include/librazobill/Stats.hpp`):
+
+- `struct Ledger`: Tracks coverage, content entropy $C = H(W)$, expression entropy $E = H(X)$, latitude $\Lambda = H(X \mid W)$, and doubt $\Delta = H(W \mid X)$.
+- Conservation laws: $E = I(X; W) + \Lambda$ and $C = I(X; W) + \Delta$.
+
+### Steganographic channel
+
+Provenance encoding and decoding over synonymous template forms (`include/librazobill/Channel.hpp`):
+
+- Realizes Theorem 8 (Capacity) and Proposition 9 (Finite-Precision Bound).
+- `encode(payload, forms)`: Embeds metadata bits into template selections.
+- `decode(forms)`: Extracts metadata bits, catching interval underflows safely.
+
+### Razobill coordinator
+
+Central compaction engine orchestrator (`include/librazobill/Razobill.hpp`):
+
+- `compact()`: Decomposes unstructured tables into columnar compact form families (`logs_c`, `logs_t`, `logs_d`).
+- `verify(table)`: Validates that compact storage reconstructs the raw source table byte for byte.
+- `GateRefused`: Exception raised when an information gate merge exceeds the configured loss threshold $\epsilon$.
 
 ---
 

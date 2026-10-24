@@ -131,10 +131,23 @@ struct Scratch {
 /// retrieve or allocate thread-local scratch buffer instance
 /// out: reference to private Scratch structure for current thread
 /// thread: thread-safe, zero locks on hot path
+#if defined(__MINGW32__) || defined(__MINGW64__)
+// On MinGW-w64, thread_local objects with non-trivial destructors trigger a known
+// runtime heap corruption bug (0xc0000374) in tls_atexit.c upon worker thread exit.
+// Using a pointer type avoids registering destructors with __cxa_thread_atexit.
+Scratch& scratch() {
+    thread_local Scratch* p = nullptr;
+    if (!p) {
+        p = new Scratch();
+    }
+    return *p;
+}
+#else
 Scratch& scratch() {
     thread_local Scratch s;
     return s;
 }
+#endif
 
 /// wrap DuckDB string struct into non-owning string_view
 /// in: s is valid or inline duckdb_string_t

@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
+## [1.1.5] - 2026-10-24
+
+### Fixed
+
+- **F1 Round-trip Format Escaping & Robustness**:
+  - Implemented `0x11` delimiter escaping in `src/Slots.cpp` so that literal round-trip delimiter bytes (`\x12`, `\x13`, `\x11`) in raw input messages escape losslessly without corrupting template reconstruction.
+  - Hardened pure-Python `_fallback.py` to mirror native C++ `0x11` escape logic.
+  - Preserved backward compatibility for unescaped legacy forms (`isLegacyFormKey`).
+- **F2 C ABI Zero-Heap Allocation & Contract Fixes**:
+  - Added zero-allocation pre-flight buffer sizing probes to `RzJoin` and `RzTemplate` when `outBuffer == nullptr`, returning `RZ_OK` with required capacity written to `*outLength`.
+  - Added `RzStatusMessage` null-safety for unknown status codes, returning `"Unknown error"`.
+  - Removed per-call `std::string` heap allocations in `RzTemplate` hot path using direct string-view buffer writes.
+  - Eliminated undefined behavior in `Channel.cpp` `failureProbabilityBound` when handling negative inputs or NaN values.
+- **F3 Core C++ Robustness & Hardening Sweep**:
+  - Replaced C-style casts with `static_cast` throughout `include/librazobill/Hash.hpp`.
+  - Guarded `ThreadPool` empty task queues and thread joins with exception safety.
+  - Replaced manual loops in `FormCatalog` with `std::find_if`.
+- **F4 & F5 SQL Control Plane: TransactionGuard & Dialect Parity**:
+  - Activated DuckDB transaction management in `TransactionGuard`, ensuring transactional rollback and atomic commit.
+  - Resolved MVCC table creation conflict in DuckDB compact mode by verifying table existence prior to table creation.
+  - Normalized `DuckDialect::templateExpr` and `ClickHouseDialect::templateExpr` to produce identical `{i}` and `{s}` template placeholders.
+  - Updated `ClickHouseDialect::formExpr` to modern `arrayStringConcat(arrayZipWith(...))`.
+- **F6 BackendAdbc Driver Hardening**:
+  - Added RAII `StreamGuard` releasing Arrow array streams upon exceptions or early return.
+  - Added bounds checking for Arrow array offsets and null bitmaps across `isValid()`, `at()`, `decode()`, and `run()`.
+  - Enforced compile-time little-endian assertion `std::endian::native == std::endian::little`.
+  - Unified table accessor out-of-bounds error handling to consistently raise `BackendError`.
+- **F7 Python Bindings Fidelity & GIL Release**:
+  - Wrapped `splitOne`, `templateOne`, and `joinOne` with `py::gil_scoped_release` to enable true multi-threaded CPU concurrency in Python.
+  - Scoped DLL loading to package directories on Windows, eliminating insecure system PATH traversal.
+  - Cleaned `MANIFEST.in` stale references.
+- **F8 Rust Vector VRL Crate Losslessness & C ABI Linking**:
+  - Linked `razobill_cabi` shared library instead of DuckDB extension in `ext/vector/build.rs`.
+  - Switched `RzStatus` to integer constants to prevent enum undefined behavior.
+  - Supported raw byte slices losslessly in `parse_razobill(impl AsRef<[u8]>)`.
+  - Bumped `razobill-vector` to `2.0.0`.
+- **F9 OpenTelemetry Go Processor Robustness**:
+  - Linked `razobill_cabi` and scoped `-lstdc++` to Linux in `ext/otel/RazobillProcessor.go`.
+  - Supported both string and byte bodies (`pcommon.ValueTypeBytes`).
+  - Added panic-safe cleanup with `defer C.free` and `defer C.RzFree`.
+  - Enforced valid `semantic` mode in `Config.Validate()`.
+- **F10 & F11 Build System & CI Pipelines**:
+  - Single-sourced DuckDB C API ABI target version (`v1.5.6`) across CMake and metadata stamping tools.
+  - Updated `librazobill.pc.in` to link `-lrazobill_cabi`.
+  - Documented `LIBRAZOBILL_STATIC`/`LIBRAZOBILL_EXPORTS` macro visibility matrix.
+  - Added Go and Rust test jobs to GitHub Actions CI and enforced native C++ engine with `RZB_REQUIRE_NATIVE=1`.
+  - Added `gomod` and `cargo` to Dependabot configuration.
+- **F12 & F13 Documentation Honesty & Benchmark Integrity**:
+  - Rewrote `docs/how-to/cpp-developer.md` against real C++20 and C99 ABI signatures.
+  - Corrected `Status::TooLarge` and `kMaxMessageBytes` references.
+  - Removed fabricated 69.4M-lines/s fallback in `bench/s3/BenchDrain3VsRazobillS3.py`.
+  - Updated `tools/BenchScale.py` to modern `split_many` / `join` worker-pool batching.
+  - Aligned hardware memory receipts to 7.78 GB RAM and synchronized DuckDB storage receipts to `evidence/ResultsE7Default.txt`.
+
+---
+
 ## [1.1.4] - 2026-10-22
 
 ### Fixed
@@ -127,6 +183,23 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
+## [1.1.0] - 2026-10-12
+
+### Added
+
+- **Unified Placeholder Syntax**:
+  - Introduced standard `{i}` (integer) and `{s}` (string) placeholders with `{{` and `}}` literal brace escaping across C++, Python, and DuckDB extensions.
+  - Added `ScanMode::Semantic` as default tokenizer mode grouping contextual strings (IPs, paths, hashes) alongside standalone numbers.
+- **Foreign Language Adapter Scaffolding**:
+  - Added OpenTelemetry Collector processor module (`ext/otel/`) and Vector Remap Language native transform crate (`ext/vector/`).
+
+### Changed
+
+- **Deprecation of Legacy Delimiters**:
+  - Deprecated unescaped `0x12` and `0x13` control character delimiters in favor of canonical template strings and structured records.
+
+---
+
 ## [1.0.1] - 2026-10-11
 
 ### Added
@@ -206,7 +279,11 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
+[1.1.5]: https://github.com/razobill/razobill/releases/tag/v1.1.5
 [1.1.4]: https://github.com/razobill/razobill/releases/tag/v1.1.4
 [1.1.3]: https://github.com/razobill/razobill/releases/tag/v1.1.3
 [1.1.2]: https://github.com/razobill/razobill/releases/tag/v1.1.2
+[1.1.1]: https://github.com/razobill/razobill/releases/tag/v1.1.1
+[1.1.0]: https://github.com/razobill/razobill/releases/tag/v1.1.0
+[1.0.1]: https://github.com/razobill/razobill/releases/tag/v1.0.1
 [1.0.0]: https://github.com/razobill/razobill/releases/tag/v1.0.0

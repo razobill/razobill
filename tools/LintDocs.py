@@ -44,12 +44,8 @@ DEPRECATED_SYMBOLS = {
 DEPRECATION_ALLOWLIST = {
     "CHANGELOG.md",
     "docs/governance/DeprecationPolicy.md",
-    "docs-refactor/INVENTORY.md",
-    "docs-refactor/DECISIONS.md",
-    "docs-refactor/MAP.md",
-    "docs-refactor/CHANGES.md",
-    "docs-refactor/REVIEW.md",
     "docs/STYLE.md",
+    "AUDIT.md",
 }
 
 
@@ -208,6 +204,8 @@ def main():
             total_errors.extend(lint_file(p))
         elif p.is_dir():
             for sub_p in p.rglob("*.md"):
+                if "superpowers" in sub_p.parts:
+                    continue
                 total_errors.extend(lint_file(sub_p))
 
     if total_errors:

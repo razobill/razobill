@@ -91,6 +91,21 @@ Razobill connects to columnar storage engines via two dedicated architectures:
 
 ---
 
+## Information theory: latitude, doubt, and provenance channels
+
+Razobill models log generation through an information-theoretic framework described in *Latitude and Doubt* (M. M. Atta, 2026):
+
+- **Latitude ($\Lambda = H(X \mid W)$)**: The conditional entropy of surface log representations $X$ given semantic intent $W$. When multiple synonymous templates or surface formats represent the same meaning, Latitude measures the available capacity for metadata embedding.
+- **Doubt ($\Delta = H(W \mid X)$)**: Residual semantic uncertainty. In an unambiguous source, $\Delta = 0$, meaning the observed log line uniquely identifies its semantic intent.
+- **Theorem 8 (Capacity)**: In an unambiguous semantic source ($\Delta = 0$), the capacity of the steganographic and provenance channel over synonymous template choices is strictly bounded by $\Lambda = H(X \mid W)$ bits per event.
+- **Proposition 9 (Finite-precision bound)**: Distortion-free reconstruction across a sequence of length $N$ under arithmetic interval coding requires precision:
+
+$$P = \left\lceil \sum_{i=1}^N \max_x (-\log_2 Q(x \mid w_i)) \right\rceil + s + 1 \text{ bits}$$
+
+The implementation in `include/librazobill/Channel.hpp` realizes this channel over IEEE 754 64-bit floating point intervals (53 bits of mantissa). When required precision $P$ exceeds mantissa precision, interval arithmetic underflow is safely caught, returning `success = false` rather than corrupting telemetry data.
+
+---
+
 ## Related
 
 - [Lossless invertibility mechanics](lossless-invertibility.md)

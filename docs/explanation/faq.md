@@ -56,7 +56,7 @@ Yes. The engine operates on raw byte sequences (`const char*` and lengths). Non-
 
 ## What is the maximum supported line length?
 
-Razobill enforces a hard limit of 16 MiB ($16 \times 1024 \times 1024$ bytes) per log line. Passing a larger line returns `Status::MessageTooLarge` in C++ and raises `ValueError` in Python.
+Razobill enforces a hard limit of 16 MiB (`razobill::kMaxMessageBytes` = $16 \times 1024 \times 1024$ bytes) per log line. Passing a larger line returns `Status::TooLarge` in C++ and raises `ValueError` in Python.
 
 ---
 

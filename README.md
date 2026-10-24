@@ -12,7 +12,6 @@
   <a href="https://github.com/razobill/razobill/actions/workflows/Release.yml"><img src="https://github.com/razobill/razobill/actions/workflows/Release.yml/badge.svg" alt="Release Status"></a>
   <a href="https://github.com/duckdb/community-extensions/tree/main/extensions/razobill"><img src="https://img.shields.io/badge/DuckDB%20Community-razobill-blue?logo=duckdb" alt="DuckDB Community Extension"></a>
   <a href="https://pypi.org/project/pyrazobill/"><img src="https://img.shields.io/pypi/v/pyrazobill.svg" alt="PyPI Package Version"></a>
-  <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0"></a>
 </p>
 
 Razobill splits log lines into templates, integers, and strings, and reconstructs them byte for byte.
@@ -43,8 +42,8 @@ Every byte of whitespace, punctuation, and ordering is preserved.
 | Environment | Package or command | Status |
 | :--- | :--- | :---: |
 | Python 3.9–3.13 | `pip install pyrazobill` | Stable |
-| DuckDB 1.2.x | `INSTALL razobill FROM community; LOAD razobill;` | Stable |
-| C ABI (C99 / C++20) | `#include "librazobill/RazobillC.h"` (`-lrazobill`) | Stable |
+| DuckDB 1.5.x–2.0.x | `INSTALL razobill FROM community; LOAD razobill;` | Stable |
+| C ABI (C99 / C++20) | `#include "librazobill/RazobillC.h"` (`-lrazobill_cabi`) | Stable |
 | OpenTelemetry | `razobillprocessor` in custom collector build | Beta |
 | Vector | `razobill-vector` transform in Vector Remap Language | Beta |
 
@@ -113,7 +112,7 @@ Output:
 | :--- | :--- | :--- | :--- |
 | Invertibility audit | 0 mismatches across 69.6M lines | 4,861 files, 6.82 GB raw logs | `tests/UnitCore.cpp` |
 | Long stream vs Drain3 | 0.09 s vs 26.5 s (100k lines) | SSH dataset, Windows 11 (12 cores) | `tools/BenchDrain.py` |
-| DuckDB storage | 3.41 MB vs 5.24 MB raw (35% smaller) | 134,815 events, DuckDB 1.2.0 | `build/BenchStorage.exe` |
+| DuckDB storage | 2.88 MB vs 6.29 MB raw (0.46× / 54% reduction) | 134,815 events, DuckDB (CC-d) | `evidence/ResultsE7Default.txt` |
 | Parquet on S3 | 85.5% to 94.8% text footprint reduction | LogHub corpora, Zstd compression | `tools/BenchCLP.py` |
 
 Benchmarks run on Windows 11 (12 cores). S3 savings evaluated via simulated storage models. Full reproducibility scripts in `tools/` and `evidence/`. Full comparison details: [docs/explanation/benchmarks.md](docs/explanation/benchmarks.md).

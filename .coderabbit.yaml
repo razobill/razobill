@@ -46,7 +46,7 @@ instructions: |
   3. **Universal C ABI Stability**:
      - Functions in `RazobillC.h` (`Rz*`) form a stable C ABI.
      - Never alter parameter signatures or struct layouts without backwards compatibility.
-     - Any memory allocated in the C++ layer must be freed by `RzFreeRecord()`. Never use `free()` directly on record pointers.
+     - Any memory allocated in the C++ layer must be freed by `RzFree()`. Never use `free()` directly on record pointers.
 
   4. **Performance & Allocation Invariants**:
      - The zero-copy data plane must avoid dynamic allocations in hot scanning paths.

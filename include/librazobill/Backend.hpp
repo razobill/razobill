@@ -52,7 +52,8 @@ struct Table {
 };
 
 /// abstract interface for executing control plane SQL and tabular queries
-/// thread: instances are single-threaded; use separate instances per thread
+/// thread: implementations (such as AdbcBackend) synchronize execution via internal
+///         connection mutexes; concurrent calls serialize safely across threads.
 class Backend {
 public:
     virtual ~Backend() = default;

@@ -38,13 +38,13 @@ pip install -e .
 ## Verified test commands
 
 ```bash
-# Native C++ unit tests (50 test cases, 1,982,613 assertions, ~0.6s)
+# Native C++ unit tests (59 test cases, 1,982,670 assertions, ~0.6s)
 ./build/UnitTests          # Windows: .\build\UnitTests.exe
 
-# DuckDB extension integration tests (14 test cases, 134,906 assertions, ~0.5s)
+# DuckDB extension integration tests (15 test cases, 134,912 assertions, ~0.5s)
 ./build/IntegrationDuckdb  # Windows: .\build\IntegrationDuckdb.exe
 
-# Python unit test suite (15 tests, ~0.15s)
+# Python unit test suite (23 tests, ~0.15s)
 python -m unittest discover -s lib/python/tests
 
 # Python property-based fuzz tests (5 tests, ~0.9s)

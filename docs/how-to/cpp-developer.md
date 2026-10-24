@@ -11,7 +11,7 @@ This guide shows how to link and execute `librazobill` directly in native C++20 
 
 ## Prerequisites
 
-- C++20 compiler: GCC 11+, Clang 13+, or MSVC 2022 (v19.30+)
+- C++20 compiler: GCC 12+, Clang 15+, or MSVC 2022 (v19.30+)
 - CMake 3.20 or newer
 - POSIX threads (`pthreads`) on Linux/macOS, or Windows SDK on Windows
 
@@ -48,7 +48,6 @@ Include `librazobill/Slots.hpp` and `librazobill/Razobill.hpp` to access the nat
 Create `main.cpp`:
 
 ```cpp
-#include "librazobill/Razobill.hpp"
 #include "librazobill/Slots.hpp"
 
 #include <cassert>
@@ -61,28 +60,32 @@ int main() {
     const std::string line = "Failed password for root from 192.168.1.100 port 22";
 
     // Decompose into template and parameters
-    razobill::core::SlotRecord record = razobill::core::splitSlots(line);
+    razobill::core::SlotRecord record;
+    razobill::Status status = razobill::core::parse(line, record, razobill::core::ScanMode::Semantic);
+    assert(status == razobill::Status::Ok);
 
-    std::cout << "Template: " << record.templateString << "\n";
-    std::cout << "Integers (" << record.intSlots.size() << "): ";
-    for (int64_t val : record.intSlots) {
+    std::cout << "Template: " << record.templateStr << "\n";
+    std::cout << "Integers (" << record.ints.size() << "): ";
+    for (int64_t val : record.ints) {
         std::cout << val << " ";
     }
     std::cout << "\n";
 
-    std::cout << "Strings  (" << record.strSlots.size() << "): ";
-    for (std::string_view sv : record.strSlots) {
+    std::cout << "Strings  (" << record.strs.size() << "): ";
+    for (std::string_view sv : record.strs) {
         std::cout << "'" << sv << "' ";
     }
     std::cout << "\n";
 
     // Byte-exact reconstruction invariant
-    std::string reconstructed = razobill::core::joinSlots(
-        record.templateString,
-        record.intSlots,
-        record.strSlots
+    std::string reconstructed;
+    razobill::Status reconStatus = razobill::core::reconstruct(
+        record.templateStr,
+        record.ints,
+        record.strs,
+        reconstructed
     );
-
+    assert(reconStatus == razobill::Status::Ok);
     assert(reconstructed == line);
     std::cout << "Round trip verified: exact match.\n";
 
@@ -109,7 +112,7 @@ int main(void) {
     const char message[] = "Failed password for root from 192.168.1.100 port 22";
     size_t length = strlen(message);
 
-    RzRecord record;
+    RzRecord record = {0};
     RzStatus status = RzSplit(message, length, &record);
     assert(status == RZ_OK);
 
@@ -119,11 +122,8 @@ int main(void) {
 
     // Reconstruct into a preallocated destination buffer
     char out_buf[256];
-    size_t out_len = sizeof(out_buf);
-    status = RzJoin(record.templateStr, record.templateLength,
-                    record.intValues, record.intCount,
-                    record.strValues, record.strLengths, record.strCount,
-                    out_buf, &out_len);
+    size_t out_len = 0;
+    status = RzJoin(&record, out_buf, sizeof(out_buf), &out_len);
     assert(status == RZ_OK);
     assert(out_len == length);
     assert(memcmp(out_buf, message, length) == 0);
@@ -159,9 +159,9 @@ cmake --build build
 Expected output:
 
 ```text
-Template: Failed password for root from {} port {}
-Integers (2): 100 22 
-Strings  (1): '192.168.1' 
+Template: Failed password for root from {s} port {i}
+Integers (1): 22 
+Strings  (1): '192.168.1.100' 
 Round trip verified: exact match.
 ```
 

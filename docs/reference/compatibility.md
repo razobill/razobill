@@ -23,7 +23,7 @@ Every Razobill component is assigned one of three maturity levels:
 
 | Operating system | Architectures | C++ engine | Python wheels | DuckDB extension |
 | :--- | :--- | :---: | :---: | :---: |
-| **Linux** (glibc 2.31+) | `x86_64`, `aarch64` | Stable | Stable | Stable |
+| **Linux** (glibc 2.28+) | `x86_64`, `aarch64` | Stable | Stable | Stable |
 | **Linux** (musl) | `x86_64`, `aarch64` | Stable | Source (`sdist`) | Beta |
 | **macOS** (11.0+) | Apple Silicon (`arm64`), Intel (`x86_64`) | Stable | Stable | Stable |
 | **Windows** (10+) | `x86_64` (MSVC) | Stable | Stable | Stable |

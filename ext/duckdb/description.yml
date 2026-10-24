@@ -16,13 +16,14 @@ extension:
   maintainers:
     - 4t1a
   excluded_platforms: "wasm_mvp;wasm_eh;wasm_threads;windows_amd64_rtools"
+  opt_in_platforms: "osx_amd64"
 
 # upstream git repository coordinates and tagged release reference
 repo:
   github: razobill/razobill
-  ref: d6b991976d6f9156fc6eee059649a56172d5d8be
-  variegata: d6b991976d6f9156fc6eee059649a56172d5d8be
-  andium: d6b991976d6f9156fc6eee059649a56172d5d8be
+  ref: 5803557607994b9a5e124b5fcad921352ccdf1e9
+  variegata: 5803557607994b9a5e124b5fcad921352ccdf1e9
+  andium: 5803557607994b9a5e124b5fcad921352ccdf1e9
 
 # documentation and sql usage examples published on DuckDB community portal
 docs:

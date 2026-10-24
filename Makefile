@@ -20,7 +20,7 @@ USE_UNSTABLE_C_API=0
 TARGET_DUCKDB_VERSION=v1.5.6
 EXTENSION_VERSION?=v$(shell cat VERSION 2>/dev/null | tr -d '[:space:]')
 ifeq ($(strip $(EXTENSION_VERSION)),v)
-EXTENSION_VERSION=v1.1.6
+EXTENSION_VERSION=v1.1.7
 endif
 
 # Pass build flag to build only the extension in CI

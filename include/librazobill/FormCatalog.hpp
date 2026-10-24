@@ -115,6 +115,10 @@ public:
 
         const std::string keyStr(key);
 
+        if (formsByKey_.size() >= std::numeric_limits<std::uint32_t>::max() - 1) {
+            throw std::length_error("FormCatalog capacity exceeded UINT32_MAX");
+        }
+
         FormEntry entry;
         entry.id = static_cast<std::uint32_t>(formsByKey_.size() + 1);
         entry.hash = explicitHash;

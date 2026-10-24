@@ -7,6 +7,7 @@
 // filesystem paths across platforms, and formats structured result metrics
 // =============================================================================
 
+#include <array>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>

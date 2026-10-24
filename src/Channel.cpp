@@ -85,6 +85,7 @@ std::size_t requiredKeyBits(std::span<const MeaningChoice> sequence, std::size_t
 /// out: upper bound in [0, 1] on decoding failure probability
 /// thread: pure function, noexcept
 double failureProbabilityBound(const ChannelCapacity& capacity, std::size_t payloadBits, double s) noexcept {
+    if (std::isnan(s) || s < 0.0) return 1.0;
     const double a = capacity.meanCapacityBits - static_cast<double>(payloadBits) - s;
     if (a <= 0.0) return 1.0;
     const double chebyshev = capacity.variance / (a * a);

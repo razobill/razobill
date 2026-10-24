@@ -7,6 +7,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 #include "doctest.h"
@@ -235,3 +236,10 @@ TEST_CASE("Channel degenerate inputs and precision underflow rejection") {
     auto resLongDecode = decode(longSeq, longForms, 8, sharedKey);
     CHECK(!resLongDecode.success);
 }
+
+TEST_CASE("Channel failureProbabilityBound handles NaN and negative s") {
+    ChannelCapacity cap{.meanCapacityBits = 100.0, .variance = 10.0, .safePayloadBits = 50};
+    CHECK(failureProbabilityBound(cap, 50, std::numeric_limits<double>::quiet_NaN()) == 1.0);
+    CHECK(failureProbabilityBound(cap, 50, -1e12) == 1.0);
+}
+

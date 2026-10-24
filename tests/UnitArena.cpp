@@ -225,3 +225,11 @@ TEST_CASE("ThreadPool parallelFor handles zero chunkSize safely") {
         REQUIRE(data[i] == 1);
     }
 }
+
+TEST_CASE("MemoryArena degenerate parameters and zero block size") {
+    MemoryArena arenaZero(0);
+    void* p = arenaZero.allocate(64, 8);
+    REQUIRE(p != nullptr);
+    CHECK(arenaZero.allocate(0, 8) == nullptr);
+}
+

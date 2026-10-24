@@ -89,8 +89,14 @@ private:
 /// in      s non-empty identifier up to 64 bytes; what names diagnostic field
 /// err     throws std::invalid_argument on syntax violation
 void requireIdentifier(const std::string& s, const char* what) {
-    const bool ok = !s.empty() && s.size() <= 64 && (std::isalpha(static_cast<unsigned char>(s[0])) || s[0] == '_') &&
-                    std::ranges::all_of(s, [](unsigned char c) { return std::isalnum(c) || c == '_'; });
+    auto isAsciiAlpha = [](char c) noexcept {
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+    };
+    auto isAsciiAlnum = [&isAsciiAlpha](char c) noexcept {
+        return isAsciiAlpha(c) || (c >= '0' && c <= '9');
+    };
+    const bool ok = !s.empty() && s.size() <= 64 && (isAsciiAlpha(s[0]) || s[0] == '_') &&
+                    std::ranges::all_of(s, [&isAsciiAlnum](char c) { return isAsciiAlnum(c) || c == '_'; });
     if (!ok) throw std::invalid_argument(std::string(what) + " must match [A-Za-z_][A-Za-z0-9_]{0,63}: '" + s + "'");
 }
 
@@ -164,6 +170,9 @@ class Interner {
 public:
     /// returns existing id or interns s with next available sequential id
     std::uint32_t operator()(const std::string& s) {
+        if (ids_.size() >= std::numeric_limits<std::uint32_t>::max()) {
+            throw std::length_error("interner capacity exceeded UINT32_MAX");
+        }
         return ids_.try_emplace(s, static_cast<std::uint32_t>(ids_.size())).first->second;
     }
     /// view of interned string-to-id dictionary

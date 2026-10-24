@@ -74,12 +74,7 @@ enum class SimdArchitecture : std::uint8_t { Scalar = 0, Neon = 1, Avx2 = 2, Avx
     if (nIds >= 7) {
         __cpuidex(cpuInfo, 7, 0);
         const bool avx2 = (cpuInfo[1] & (1 << 5)) != 0;
-        const bool avx512f = (cpuInfo[1] & (1 << 16)) != 0;
-        const bool avx512bw = (cpuInfo[1] & (1 << 30)) != 0;
-        // For AVX-512, check XCR0 bits 5, 6, 7 (opmask, ZMM_Hi256, Hi16_ZMM)
-        // -> mask 0xE6
-        const bool zmmSupported = (xcr0 & 0xE6) == 0xE6;
-        if (zmmSupported && avx512f && avx512bw) return SimdArchitecture::Avx512;
+        // On MSVC, findWhitespaceAvx512 falls back to AVX2; cap detection at Avx2
         if (avx2) return SimdArchitecture::Avx2;
     }
     return SimdArchitecture::Scalar;

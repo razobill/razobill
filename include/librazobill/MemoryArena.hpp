@@ -33,7 +33,8 @@ public:
 
     /// construct arena with specified default block size
     /// in: defaultBlockSize capacity in bytes for new blocks (default 256 KB)
-    explicit MemoryArena(std::size_t defaultBlockSize = 256 * 1024) : defaultBlockSize_(defaultBlockSize) {}
+    explicit MemoryArena(std::size_t defaultBlockSize = 256 * 1024)
+        : defaultBlockSize_(defaultBlockSize ? defaultBlockSize : 256 * 1024) {}
 
     /// destructor frees all allocated OS blocks
     ~MemoryArena() { clear(); }
@@ -77,6 +78,9 @@ public:
     [[nodiscard]] void* allocate(std::size_t bytes, std::size_t alignment = 8) {
         if (bytes == 0) [[unlikely]]
             return nullptr;
+        if (alignment == 0 || (alignment & (alignment - 1)) != 0) [[unlikely]] {
+            alignment = 8;
+        }
 
         // Fast path: fits into active block
         if (currentBlockIdx_ < blocks_.size()) [[likely]] {

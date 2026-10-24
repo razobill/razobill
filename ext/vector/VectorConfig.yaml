@@ -27,7 +27,6 @@ transforms:
       .message = .razobill.template
       .ints = .razobill.ints
       .strs = .razobill.strs
-      .hash = .razobill.hash
 
 # downstream destinations: columnar analytics storage with dual target fanout
 sinks:

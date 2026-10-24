@@ -10,6 +10,7 @@ module github.com/razobill/razobill/ext/otel
 go 1.25.0
 
 require (
+	github.com/cespare/xxhash/v2 v2.3.0
 	go.opentelemetry.io/collector/component v0.111.0
 	go.opentelemetry.io/collector/consumer v0.111.0
 	go.opentelemetry.io/collector/consumer/consumertest v0.111.0
@@ -18,7 +19,6 @@ require (
 )
 
 require (
-	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect

@@ -18,6 +18,7 @@ import "C"
 
 import (
 	"context"
+	"fmt"
 	"unsafe"
 
 	"github.com/cespare/xxhash/v2"
@@ -50,6 +51,9 @@ func newRazobillProcessor(cfg *Config, next consumer.Logs) (*RazobillProcessor, 
 
 // Start initializes processor resources during collector startup
 func (p *RazobillProcessor) Start(_ context.Context, _ component.Host) error {
+	if int(C.RzAbiVersion()) != 1 {
+		return fmt.Errorf("incompatible librazobill ABI version: got %d, want 1", int(C.RzAbiVersion()))
+	}
 	return nil
 }
 
@@ -71,22 +75,29 @@ func (p *RazobillProcessor) processRecord(rec plog.LogRecord) {
 	switch rec.Body().Type() {
 	case pcommon.ValueTypeStr:
 		strVal := rec.Body().Str()
-		if len(strVal) == 0 {
-			return
-		}
 		rawBytes = []byte(strVal)
 	case pcommon.ValueTypeBytes:
 		rawBytes = rec.Body().Bytes().AsRaw()
-		if len(rawBytes) == 0 {
-			return
-		}
 		isBytes = true
 	default:
 		strVal := rec.Body().AsString()
-		if len(strVal) == 0 {
-			return
-		}
 		rawBytes = []byte(strVal)
+	}
+
+	if len(rawBytes) == 0 {
+		if p.cfg.DropRawBody {
+			if isBytes {
+				rec.Body().SetEmptyBytes().FromRaw([]byte{})
+			} else {
+				rec.Body().SetStr("")
+			}
+		} else {
+			rec.Attributes().PutStr("razobill.template", "")
+		}
+		if p.cfg.IncludeHash {
+			rec.Attributes().PutInt("razobill.formHash", int64(xxhash.Sum64String("")))
+		}
+		return
 	}
 
 	cMsg := C.CBytes(rawBytes)
@@ -157,6 +168,9 @@ func (p *RazobillProcessor) processRecord(rec plog.LogRecord) {
 func (p *RazobillProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs) error {
 	rls := ld.ResourceLogs()
 	for i := 0; i < rls.Len(); i++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		sls := rls.At(i).ScopeLogs()
 		for j := 0; j < sls.Len(); j++ {
 			records := sls.At(j).LogRecords()

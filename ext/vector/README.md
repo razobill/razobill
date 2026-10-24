@@ -8,7 +8,7 @@
 </p>
 
 High-throughput log compaction and telemetry transform for Vector (Datadog).
-Powered by librazobill, it decomposes raw text events at up to 2.38 million lines per second per core.
+Powered by librazobill, it decomposes raw text events into structural templates, integers, and strings.
 It allows edge pipelines to ship structured columnar stripes directly to Amazon S3 or ClickHouse with zero byte loss.
 
 ---

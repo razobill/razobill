@@ -48,14 +48,6 @@ extern "C" {
     pub fn RzStatusMessage(status: RzStatus) -> *const c_char;
 }
 
-/// Lossless raw decomposed record retaining exact bytes
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RawRecord {
-    pub template: Vec<u8>,
-    pub ints: Vec<i64>,
-    pub strs: Vec<Vec<u8>>,
-}
-
 /// decompose raw log message into structured JSON event map
 /// inv: template and parameter slices reconstruct original message
 /// in: raw_msg is UTF-8 string or raw byte slice

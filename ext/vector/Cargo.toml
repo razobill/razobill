@@ -16,7 +16,7 @@ license = "Apache-2.0"
 [lib]
 name = "razobill_vector"
 path = "RazobillVrl.rs"
-crate-type = ["lib", "cdylib"]
+crate-type = ["rlib"]
 
 [dependencies]
 # serialization for vector event payload payloads

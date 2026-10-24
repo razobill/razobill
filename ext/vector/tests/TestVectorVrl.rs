@@ -58,3 +58,25 @@ fn test_parse_razobill_non_utf8_lossless() {
     let ints = res.get("ints").unwrap().as_array().unwrap();
     assert_eq!(ints[0].as_i64().unwrap(), 42);
 }
+
+#[test]
+fn test_parse_razobill_empty_input() {
+    let res = parse_razobill("").expect("Failed to parse empty string");
+    assert_eq!(res.get("template").unwrap().as_str().unwrap(), "");
+    assert_eq!(res.get("ints").unwrap().as_array().unwrap().len(), 0);
+    assert_eq!(res.get("strs").unwrap().as_array().unwrap().len(), 0);
+
+    let res_bytes = parse_razobill(b"").expect("Failed to parse empty bytes");
+    assert_eq!(res_bytes.get("template").unwrap().as_str().unwrap(), "");
+    assert_eq!(res_bytes.get("ints").unwrap().as_array().unwrap().len(), 0);
+    assert_eq!(res_bytes.get("strs").unwrap().as_array().unwrap().len(), 0);
+}
+
+#[test]
+fn test_parse_razobill_no_slots() {
+    let msg = "Static log line without dynamic slots.";
+    let res = parse_razobill(msg).expect("Failed to parse static line");
+    assert_eq!(res.get("template").unwrap().as_str().unwrap(), msg);
+    assert_eq!(res.get("ints").unwrap().as_array().unwrap().len(), 0);
+    assert_eq!(res.get("strs").unwrap().as_array().unwrap().len(), 0);
+}

@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <cmath>
 #include <map>
 #include <sstream>
@@ -123,7 +124,10 @@ std::string quoteIdentifier(std::string_view name) {
 /// err     throws std::invalid_argument on syntax violation
 void requireName(const std::string& s) {
     if (s.empty() || s.size() > 128 ||
-        !std::ranges::all_of(s, [](unsigned char c) { return std::isalnum(c) || c == '_' || c == '.' || c == '-'; }))
+        !std::ranges::all_of(s, [](unsigned char c) {
+            return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' ||
+                   c == '.' || c == '-';
+        }))
         throw std::invalid_argument("meaning must match [A-Za-z0-9_.-]{1,128}: '" + s + "'");
 }
 
@@ -132,10 +136,10 @@ void requireName(const std::string& s) {
 /// in      finite double-precision value
 /// out     string with 17 decimal digits of precision
 std::string num(double d) {
-    std::ostringstream o;
-    o.precision(17);
-    o << d;
-    return o.str();
+    std::array<char, 64> buf{};
+    auto [ptr, ec] = std::to_chars(buf.data(), buf.data() + buf.size(), d);
+    if (ec != std::errc()) return "0.0";
+    return std::string(buf.data(), ptr);
 }
 
 /// checks whether candidate column name collides with internal engine slots
@@ -887,7 +891,7 @@ std::optional<MeaningOf> RazobillEngine::meaningOf(const std::string& text) {
         throw std::invalid_argument(describe(s));
     const auto id = core::xxh64(slots.templateStr);
     std::scoped_lock lock(mu_);
-    if (db_.query("SELECT count(*) FROM rb_form WHERE id = " + std::to_string(id)).i64(0, 0) == 0) return std::nullopt;
+    if (db_.query("SELECT count(*) FROM rb_form WHERE id = " + std::to_string(id) + " AND form = " + dx_->quote(slots.templateStr)).i64(0, 0) == 0) return std::nullopt;
     MeaningOf out{.formId = id, .meaning = std::nullopt, .doubt = std::nullopt, .form_id = id};
     const auto t = db_.query("SELECT meaning, doubt FROM rb_doubt WHERE form_id = " + std::to_string(id));
     if (!t.empty()) {

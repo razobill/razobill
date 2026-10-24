@@ -333,9 +333,14 @@ Status parse(std::string_view msg, SlotRecord& out, ScanMode mode) {
             // leading zeros (e.g. "007") stay strings to prevent byte loss
             if (isIntToken(tok)) {
                 std::int64_t v = 0;
-                std::from_chars(tok.data(), tok.data() + tok.size(), v);
-                out.ints.push_back(v);
-                out.templateStr.append("{i}");
+                const auto [p, ec] = std::from_chars(tok.data(), tok.data() + tok.size(), v);
+                if (ec == std::errc() && p == tok.data() + tok.size() && v >= 0) {
+                    out.ints.push_back(v);
+                    out.templateStr.append("{i}");
+                } else {
+                    out.strs.push_back(tok);
+                    out.templateStr.append("{s}");
+                }
             } else {
                 out.strs.push_back(tok);
                 out.templateStr.append("{s}");
@@ -420,9 +425,6 @@ Status templateOf(std::string_view form, std::string& out) {
             } else {
                 out.push_back(*p++);
             }
-        } else if (static_cast<unsigned char>(*p) == kPlaceholder || static_cast<unsigned char>(*p) == kTypeSeparator) {
-            out.clear();
-            return Status::Malformed;
         } else {
             out.push_back(*p++);
         }

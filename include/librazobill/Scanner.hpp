@@ -125,7 +125,8 @@ template <class OnToken>
         while (p < end && (detail::kClass[*p] & detail::kDelim)) {
             if (mode == ScanMode::Semantic && (*p == '"' || *p == '\'')) {
                 const unsigned char quote = *p;
-                if ((quote == '"' && p < unclosedDoubleQuoteEnd) || (quote == '\'' && p < unclosedSingleQuoteEnd)) {
+                if ((quote == '"' && unclosedDoubleQuoteEnd != nullptr && p < unclosedDoubleQuoteEnd) ||
+                    (quote == '\'' && unclosedSingleQuoteEnd != nullptr && p < unclosedSingleQuoteEnd)) {
                     // Suffix confirmed to have no matching unescaped closing
                     // quote
                     all |= detail::kClass[*p];
@@ -187,7 +188,7 @@ template <class OnToken>
         if (seen & detail::kDigit) {
             isVar = true;
         } else if (mode == ScanMode::Semantic) {
-            if (lastDelimChar == '=' || lastDelimChar == '@') {
+            if (lastDelimChar == '=') {
                 isVar = true;
             } else if (lastDelimChar == '"' || lastDelimChar == '\'') {
                 isVar = true;

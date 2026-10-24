@@ -187,8 +187,10 @@ TEST_CASE("templateOf") {
     CHECK(templateOf("junk {", t) == Status::Malformed);
     CHECK(templateOf("junk {x}", t) == Status::Malformed);
     CHECK(templateOf("junk }", t) == Status::Malformed);
-    CHECK(templateOf(std::string("bad \x12 char"), t) == Status::Malformed);
-    CHECK(templateOf(std::string("bad \x13 char"), t) == Status::Malformed);
+    CHECK(templateOf(std::string("raw \x12 char"), t) == Status::Ok);
+    CHECK(t == "raw \x12 char");
+    CHECK(templateOf(std::string("raw \x13 char"), t) == Status::Ok);
+    CHECK(t == "raw \x13 char");
 }
 
 // pins bitwise trailing zero count across boundary masks (0, 1, and MSB)

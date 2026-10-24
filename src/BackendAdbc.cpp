@@ -303,6 +303,7 @@ private:
         std::int64_t rows = -1;
         if (driver_.StatementExecuteQuery(&st, &stream, &rows, &err) != ADBC_STATUS_OK)
             fail("ExecuteQuery [" + q.substr(0, 160) + "]", err);
+        (void)rows;
         if (!stream.release) return;
         ArrowSchema schema{};
         if (stream.get_schema(&stream, &schema) != 0) throw BackendError("cannot read result schema");
@@ -368,6 +369,7 @@ private:
     }
 
     void cleanup() noexcept {
+        std::lock_guard<std::mutex> lock(connMutex_);
         AdbcError err{};
         if (have_conn_) {
             driver_.ConnectionRelease(&conn_, &err);

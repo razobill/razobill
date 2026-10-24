@@ -78,8 +78,8 @@ public:
     [[nodiscard]] void* allocate(std::size_t bytes, std::size_t alignment = 8) {
         if (bytes == 0) [[unlikely]]
             return nullptr;
-        if (alignment == 0 || (alignment & (alignment - 1)) != 0) [[unlikely]] {
-            alignment = 8;
+        if (alignment == 0 || (alignment & (alignment - 1)) != 0 || alignment > 4096) [[unlikely]] {
+            alignment = (alignment > 4096) ? 4096 : 8;
         }
 
         // Fast path: fits into active block

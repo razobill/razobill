@@ -323,8 +323,8 @@ DecodeResult decode(std::span<const MeaningChoice> sequence, std::span<const std
     const double leftWrapped = effectiveLeft - std::floor(effectiveLeft);
     const double rightWrapped = effectiveRight - std::floor(effectiveRight);
 
-    if (!std::isfinite(leftWrapped) || !std::isfinite(rightWrapped) || leftWrapped < 0.0 ||
-        leftWrapped >= 1.0 || rightWrapped < 0.0 || rightWrapped >= 1.0) {
+    if (!std::isfinite(leftWrapped) || !std::isfinite(rightWrapped) || leftWrapped < 0.0 || leftWrapped >= 1.0 ||
+        rightWrapped < 0.0 || rightWrapped >= 1.0) {
         res.success = false;
         return res;
     }

@@ -227,7 +227,8 @@ TEST_CASE("SimdScanner: countTrailingZeros64 zero-mask safety") {
 // pins bijection join(split(x)) == x across 300,000 randomized byte runs
 TEST_CASE("property: parse then reconstruct is the identity (random structured messages)") {
     std::mt19937_64 rng(0xC0FFEE);
-    const std::string alphabet = "abcXYZ0123456789 \t\r\n\f=,;:()[]{}\"'<>|/._-+\xC3\xA9\xE6\x97\xA5\x0B\x1F\x7F\x80\xFF";
+    const std::string alphabet =
+        "abcXYZ0123456789 \t\r\n\f=,;:()[]{}\"'<>|/._-+\xC3\xA9\xE6\x97\xA5\x0B\x1F\x7F\x80\xFF";
     SlotRecord s;
     std::string form, rebuilt;
     for (int iter = 0; iter < 300000; ++iter) {
@@ -246,7 +247,8 @@ TEST_CASE("property: parse then reconstruct is the identity (random structured m
 // pins semantic bijection join(split(x)) == x across 300,000 random runs
 TEST_CASE("property: parse then reconstruct is the identity (random structured messages, semantic mode)") {
     std::mt19937_64 rng(0xBEEFCAFE);
-    const std::string alphabet = "abcXYZ0123456789 \t\r\n\f=,;:()[]{}\"'<>|/._-+\xC3\xA9\xE6\x97\xA5\x0B\x1F\x7F\x80\xFF";
+    const std::string alphabet =
+        "abcXYZ0123456789 \t\r\n\f=,;:()[]{}\"'<>|/._-+\xC3\xA9\xE6\x97\xA5\x0B\x1F\x7F\x80\xFF";
     SlotRecord s;
     std::string form, rebuilt;
     for (int iter = 0; iter < 300000; ++iter) {
@@ -447,13 +449,12 @@ TEST_CASE("Dialect: quoting and SQL expression generation (DuckDB & ClickHouse)"
 }
 
 TEST_CASE("core: adversarial control byte format ambiguity round-trip") {
-    const std::vector<std::string> hostile = {
-        std::string("x\x12\x13I"),
-        std::string("a\x12" "b\x12" "c\x13IS"),
-        std::string("prefix\x11\x12\x13suffix"),
-        std::string("\x11\x11"),
-        std::string("\x12\x13I")
-    };
+    const std::vector<std::string> hostile = {std::string("x\x12\x13I"),
+                                              std::string("a\x12"
+                                                          "b\x12"
+                                                          "c\x13IS"),
+                                              std::string("prefix\x11\x12\x13suffix"), std::string("\x11\x11"),
+                                              std::string("\x12\x13I")};
     for (const auto& msg : hostile) {
         SlotRecord r;
         REQUIRE(parse(msg, r, ScanMode::Semantic) == Status::Ok);
@@ -469,10 +470,8 @@ TEST_CASE("core: adversarial control byte format ambiguity round-trip") {
 TEST_CASE("table: accessors bounds checking and BackendError") {
     Table t;
     t.names = {"id", "val", "label"};
-    t.rows = {
-        {std::int64_t(42), double(3.14), std::string("test")},
-        {std::monostate{}, std::uint64_t(100), std::monostate{}}
-    };
+    t.rows = {{std::int64_t(42), double(3.14), std::string("test")},
+              {std::monostate{}, std::uint64_t(100), std::monostate{}}};
 
     CHECK(t.i64(0, 0) == 42);
     CHECK(t.f64(0, 1) == 3.14);
@@ -493,4 +492,3 @@ TEST_CASE("table: accessors bounds checking and BackendError") {
     CHECK_THROWS_AS((void)t.str(0, 0), BackendError);
     CHECK_THROWS_AS((void)t.i64(0, 2), BackendError);
 }
-

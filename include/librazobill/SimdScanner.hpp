@@ -114,6 +114,7 @@ inline const SimdArchitecture kSimdArch = detectSimdArchitecture();
 __attribute__((target("avx2")))
 #endif
 inline std::size_t findWhitespaceAvx2(const char* data, std::size_t length) noexcept {
+    if (length == 0 || !data) return 0;
 #if defined(__x86_64__) || defined(_M_X64)
     std::size_t i = 0;
     const __m256i spaceVec = _mm256_set1_epi8(' ');
@@ -161,6 +162,7 @@ inline std::size_t findWhitespaceAvx2(const char* data, std::size_t length) noex
 __attribute__((target("avx512bw,avx512f")))
 #endif
 inline std::size_t findWhitespaceAvx512(const char* data, std::size_t length) noexcept {
+    if (length == 0 || !data) return 0;
 #if (defined(__GNUC__) || defined(__clang__)) && (defined(__x86_64__) || defined(_M_X64))
     std::size_t i = 0;
     const __m512i spaceVec = _mm512_set1_epi8(' ');
@@ -199,6 +201,7 @@ inline std::size_t findWhitespaceAvx512(const char* data, std::size_t length) no
 /// own: borrows buffer pointed to by data
 /// thread: pure, thread-safe, noexcept
 [[nodiscard]] inline std::size_t findWhitespaceNeon(const char* data, std::size_t length) noexcept {
+    if (length == 0 || !data) return 0;
 #if defined(__ARM_NEON) || defined(__aarch64__) || defined(_M_ARM64)
     std::size_t i = 0;
     const uint8x16_t spaceVec = vdupq_n_u8(' ');
@@ -254,6 +257,7 @@ inline std::size_t findWhitespaceAvx512(const char* data, std::size_t length) no
 /// own: borrows buffer pointed to by data
 /// thread: pure, thread-safe, noexcept
 [[nodiscard]] inline std::size_t findWhitespaceDynamic(const char* data, std::size_t length) noexcept {
+    if (length == 0 || !data) return 0;
     switch (detail::kSimdArch) {
     case SimdArchitecture::Avx512:
         return findWhitespaceAvx512(data, length);
@@ -278,6 +282,7 @@ inline std::size_t findWhitespaceAvx512(const char* data, std::size_t length) no
 /// own: borrows buffer pointed to by data
 /// thread: pure, thread-safe, noexcept
 [[nodiscard]] inline std::size_t findWhitespace(const char* data, std::size_t length) noexcept {
+    if (length == 0 || !data) return 0;
 #if defined(__AVX512BW__) && defined(__AVX512F__)
     return findWhitespaceAvx512(data, length);
 #elif defined(__AVX2__)

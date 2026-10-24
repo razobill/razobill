@@ -258,13 +258,13 @@ py::object templateOne(const py::object& input, const std::string& modeStr) {
     if (py::isinstance<py::str>(input)) {
         PyObject* encoded = PyUnicode_AsEncodedString(input.ptr(), "utf-8", "surrogateescape");
         if (!encoded) throw py::error_already_set();
+        auto encodedBytes = py::reinterpret_steal<py::bytes>(encoded);
 
-        char* buf = PyBytes_AS_STRING(encoded);
-        Py_ssize_t len = PyBytes_GET_SIZE(encoded);
+        char* buf = PyBytes_AS_STRING(encodedBytes.ptr());
+        Py_ssize_t len = PyBytes_GET_SIZE(encodedBytes.ptr());
         std::string_view sv(buf, static_cast<size_t>(len));
 
         if (sv.empty()) {
-            Py_DECREF(encoded);
             return py::str("");
         }
 
@@ -275,14 +275,12 @@ py::object templateOne(const py::object& input, const std::string& modeStr) {
             st = core::parse(sv, slots, mode);
         }
         if (st != Status::Ok) {
-            Py_DECREF(encoded);
             throw py::value_error("[razobill] What happened: Parsing failed. Why: " +
                                   std::string(razobill::describe(st)) + ". What to do: Check input data integrity.");
         }
 
         PyObject* pyTmpl = PyUnicode_DecodeUTF8(slots.templateStr.data(),
                                                 static_cast<Py_ssize_t>(slots.templateStr.size()), "surrogateescape");
-        Py_DECREF(encoded);
         if (!pyTmpl) throw py::error_already_set();
         return py::reinterpret_steal<py::object>(pyTmpl);
     }

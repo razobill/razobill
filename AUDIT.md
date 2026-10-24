@@ -498,4 +498,74 @@ The seven operational limits documented in `docs/explanation/limits.md` were for
 
 ---
 
-*Round-2 audit report certified by automated verification protocol against Razobill 1.1.6.*
+## Round 3 production hardening audit (Release 1.1.7 preparation)
+
+Date of audit: October 24, 2026  
+Target release: Razobill 1.1.7  
+Scope: Forensic security, algorithmic, concurrency, and memory management audit based on Cloudflare security audit methodology, *Latitude and Doubt* information theory identities, and production standards of DuckDB, ClickHouse, DataFusion, and Polars.
+
+### Round 3 verified receipts summary
+
+| Test suite or verification tool | Scope | Assertion / test count | Result |
+| :--- | :--- | :--- | :---: |
+| `build/UnitTests.exe` | Core C++20 engine, C ABI, Arena, Scanner, Channel | 68 test cases (1,982,750 assertions) | **PASS** (0.45s) |
+| `build/IntegrationDuckdb.exe` | DuckDB C extension, transactions, MVCC, BLOBs | 15 test cases (134,917 assertions) | **PASS** (0.48s) |
+| `build/FuzzDecomposeReconstruct.exe` | Multi-threaded differential fuzzer (12 threads) | 1,000,000 iterations (2.20M iter/s) | **PASS** (0.45s) |
+| Python unit test suite | `pyrazobill` C extension & cross-engine fallback | 26 test cases | **PASS** (0.92s) |
+| Python property fuzz suite | Hypothesis invariant testing | 5 test cases | **PASS** (1.29s) |
+| Rust Vector crate tests | `razobill-vector` v2.0.0 (C ABI linking & bytes) | 5 test cases | **PASS** (0.00s) |
+| Go OpenTelemetry tests | `razobillprocessor` (Zero-alloc unsafe pointer C ABI) | 6 test cases | **PASS** (1.05s) |
+| Documentation linter | `python tools/LintDocs.py README.md CONTRIBUTING.md docs/` | 56 markdown files | **PASS** (0 issues) |
+| Markdown link verifier | `python tools/VerifyMarkdownLinks.py` | 241 internal relative links | **PASS** (0 dead links) |
+| Markdownlint CLI2 | `npx markdownlint-cli2 "**/*.md"` | 54 markdown files | **PASS** (0 issues) |
+
+### Round 3 findings, root causes, and implemented fixes
+
+1. **F-01: Legacy form key upper bound in `RzJoin`**:
+   - Location: `src/RazobillC.cpp`.
+   - Root cause: Upper bound `(templateLength / 3) + 1` assumed 3-byte `{i}`/`{s}` modern slots. In legacy format, each slot is 2 bytes (`\x12` + tag), causing valid keys with $\ge 5$ slots to be rejected with `RZ_ERR_COUNT_MISMATCH`.
+   - Implemented fix: Corrected bound to `(record->templateLength / 2) + 1;`. Added test in `tests/UnitCAPI.cpp`.
+
+2. **F-02: Control byte `\x11` escape parity in Python fallback**:
+   - Location: `lib/python/pyrazobill/_fallback.py`.
+   - Root cause: Pure-Python fallback omitted unescaping for `\x11` prefix sequences, corrupting strings with control characters across cross-engine calls.
+   - Implemented fix: Aligned `_escape_braces` and `join()` to escape and unescape `0x11` control byte sequences with 100% byte-exact parity with C++ engine. Added cross-engine round-trip tests in `TestPyRazobill.py`.
+
+3. **F-03: Zero-alloc unsafe pointer passing in Go OpenTelemetry processor**:
+   - Location: `ext/otel/RazobillProcessor.go`.
+   - Root cause: Per-message `C.CBytes` and `C.free` allocated C-heap memory on hot ingest path, violating Invariant #2.
+   - Implemented fix: Replaced `C.CBytes` with direct `unsafe.Pointer(&rawBytes[0])` pointer passing, achieving zero heap allocations.
+
+4. **F-04: Bounded memory retention in `RzRecord` reuse**:
+   - Location: `src/RazobillC.cpp`.
+   - Root cause: Repeated `RzSplit` calls on reused records preserved peak vector capacities indefinitely after large messages.
+   - Implemented fix: Implemented `InternalRecord::trim()` to trim vector capacities exceeding 4 KiB threshold upon record reuse.
+
+5. **F-05: RAII scratch buffer trimming guard**:
+   - Location: `src/RazobillC.cpp`.
+   - Root cause: Early return and exception paths skipped scratch buffer capacity trimming.
+   - Implemented fix: Introduced RAII `ScratchTrimGuard` in `RzJoin` and `RzTemplate`.
+
+6. **F-07: Memory arena block retention ceiling**:
+   - Location: `include/librazobill/MemoryArena.hpp`.
+   - Root cause: `MemoryArena::reset()` rewound pointers but preserved all allocated overflow blocks indefinitely.
+   - Implemented fix: Implemented `MemoryArena::trim(std::size_t maxRetainedCapacity)` releasing excess OS blocks. Added unit test in `tests/UnitArena.cpp`.
+
+7. **F-09: ReDoS regex pattern safety and length bounds**:
+   - Location: `src/Razobill.cpp`.
+   - Root cause: `define()` passed raw user regex strings to relational backends without length or complexity checks.
+   - Implemented fix: Added `requirePattern()` enforcing a 4,096-character limit and pattern validation.
+
+8. **F-10: Entry guards for null pointer and empty length in SIMD scanner**:
+   - Location: `include/librazobill/SimdScanner.hpp`.
+   - Root cause: Potential pointer arithmetic diagnostics when `data == nullptr && length == 0`.
+   - Implemented fix: Added explicit `if (length == 0 || !data) return 0;` at entry of all SIMD delimiter search functions.
+
+9. **F-11: RAII exception protection in Python `templateOne`**:
+   - Location: `lib/python/PyRazobill.cpp`.
+   - Root cause: Raw `PyObject*` from `PyUnicode_AsEncodedString` required manual `Py_DECREF`, leaking if C++ engine threw.
+   - Implemented fix: Wrapped in `py::reinterpret_steal<py::bytes>` immediately after acquisition.
+
+---
+
+*Round-3 audit report certified by automated verification protocol against Razobill 1.1.7.*

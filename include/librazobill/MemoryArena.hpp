@@ -173,6 +173,35 @@ public:
         offset_ = 0;
     }
 
+    /// resets arena and releases excess backing blocks exceeding maxRetainedCapacity
+    /// inv: preserves initial/minimal blocks for fast reuse, prevents memory bloat
+    /// in: maxRetainedCapacity maximum total bytes across blocks to retain (default 4 MiB)
+    /// thread: not thread-safe
+    /// err: noexcept
+    void trim(std::size_t maxRetainedCapacity = 4 * 1024 * 1024) noexcept {
+        reset();
+        if (blocks_.size() <= 1) return;
+        std::size_t retained = 0;
+        std::size_t keepCount = 0;
+        for (std::size_t i = 0; i < blocks_.size(); ++i) {
+            if (i > 0 && retained + blocks_[i].capacity > maxRetainedCapacity) {
+                break;
+            }
+            retained += blocks_[i].capacity;
+            keepCount = i + 1;
+        }
+        for (std::size_t i = keepCount; i < blocks_.size(); ++i) {
+            if (blocks_[i].ptr) {
+#if defined(_MSC_VER) || defined(__MINGW32__)
+                _aligned_free(blocks_[i].ptr);
+#else
+                std::free(blocks_[i].ptr);
+#endif
+            }
+        }
+        blocks_.resize(keepCount);
+    }
+
     /// release all backing OS memory blocks back to the system
     /// inv: frees all blocks and resets indices to zero
     /// thread: not thread-safe

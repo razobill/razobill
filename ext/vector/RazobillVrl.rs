@@ -55,7 +55,9 @@ extern "C" {
 /// own: returns owned BTreeMap and serde_json::Value objects
 /// thread: thread-safe, no shared state
 /// err: returns Err with RzStatusMessage description if RzSplit fails
-pub fn parse_razobill(raw_msg: impl AsRef<[u8]>) -> Result<BTreeMap<String, serde_json::Value>, String> {
+pub fn parse_razobill(
+    raw_msg: impl AsRef<[u8]>,
+) -> Result<BTreeMap<String, serde_json::Value>, String> {
     let raw_bytes = raw_msg.as_ref();
     let mut record: RzRecord = unsafe { std::mem::zeroed() };
 

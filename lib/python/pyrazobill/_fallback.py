@@ -165,13 +165,24 @@ def _scan(msg: str, mode: str):
 
 
 def _escape_braces(s: str) -> str:
-    """escape literal curly braces to prevent collision with template slots
+    """escape literal curly braces and control bytes to prevent collision with template slots
 
-    inv: every '{' becomes '{{' and '}' becomes '}}'
+    inv: every '{' becomes '{{', '}' becomes '}}', and control bytes 0x11, 0x12, 0x13
+         are prefixed with 0x11 escape prefix.
     in: s is raw text slice
     out: escaped string
     """
-    return s.replace("{", "{{").replace("}", "}}")
+    res = []
+    for c in s:
+        if c == "{":
+            res.append("{{")
+        elif c == "}":
+            res.append("}}")
+        elif c in ("\x11", "\x12", "\x13"):
+            res.append("\x11" + c)
+        else:
+            res.append(c)
+    return "".join(res)
 
 
 def split(input_val: Union[str, bytes], mode: str = "semantic") -> Tuple[Union[str, bytes], List[int], List[Any]]:
@@ -319,6 +330,14 @@ def join(template_val: Union[str, bytes], ints: Sequence[int], strs: Sequence[Un
                     f"Why: Unexpected single '}}' at index {p}. "
                     f"What to do: Escape literal braces as '}}}}'."
                 )
+        elif c == "\x11":
+            # unescape control bytes: \x11\x11 -> \x11, \x11\x12 -> \x12, \x11\x13 -> \x13
+            if p + 1 < n and tmpl_str[p + 1] in ("\x11", "\x12", "\x13"):
+                out_parts.append(tmpl_str[p + 1])
+                p += 2
+            else:
+                out_parts.append("\x11")
+                p += 1
         else:
             out_parts.append(c)
             p += 1

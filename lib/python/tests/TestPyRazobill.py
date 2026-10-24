@@ -347,6 +347,30 @@ class TestPyRazobill(unittest.TestCase):
                 f"Hash mismatch on bytes {s_bytes!r}",
             )
 
+    def test_control_bytes_roundtrip_parity(self):
+        # verifies exact lossless roundtrip for control bytes 0x11, 0x12, 0x13
+        # across native and pure-Python fallback implementations
+        test_strings = [
+            "Test with \x11 \x12 \x13 control bytes",
+            "Consecutive \x11\x11\x12\x13 tokens",
+            "Braces and controls: {\x11} {\x12} {\x13}",
+            "Prefix \x11 slot 42 suffix \x12 end",
+        ]
+        for s in test_strings:
+            # Fallback roundtrip
+            fb_tmpl, fb_ints, fb_strs = _fallback.split(s)
+            self.assertEqual(_fallback.join(fb_tmpl, fb_ints, fb_strs), s)
+
+            # Native roundtrip
+            rec = rz.RzSplit(s)
+            self.assertEqual(rz.RzJoin(rec), s)
+
+            # Cross-engine: native split, fallback join
+            self.assertEqual(_fallback.join(rec.template, rec.ints, rec.strs), s)
+
+            # Cross-engine: fallback split, native join
+            self.assertEqual(rz.RzJoin(fb_tmpl, fb_ints, fb_strs), s)
+
 
 if __name__ == "__main__":
     unittest.main()

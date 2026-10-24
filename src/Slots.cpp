@@ -78,7 +78,6 @@ bool isLegacyFormKey(std::string_view form) noexcept {
 
 namespace {
 
-
 /// separates legacy form key into skeleton, type tags, and slot counts
 /// in: form contains single kTypeSeparator byte followed by 'I' and 'S' tags
 /// out: skeleton and types string_views; nInt and nStr slot counts

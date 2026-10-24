@@ -76,7 +76,7 @@ cmake --build build --config Release
 
 ### Step 5: Run the native C++ unit tests
 
-Executes 62 test cases and verifies 1,982,703 assertions in under 1 second:
+Executes 68 test cases and verifies 1,982,750 assertions in under 1 second:
 
 ```bash
 # Linux / macOS
@@ -89,12 +89,12 @@ Executes 62 test cases and verifies 1,982,703 assertions in under 1 second:
 Expected output:
 
 ```text
-[doctest] Status: SUCCESS! - 62 test cases passed! (1982703 assertions)
+[doctest] Status: SUCCESS! - 68 test cases passed! (1982750 assertions)
 ```
 
 ### Step 6: Run the DuckDB extension integration tests
 
-Verifies 15 test cases and 134,916 assertions:
+Verifies 15 test cases and 134,917 assertions:
 
 ```bash
 # Linux / macOS
@@ -107,7 +107,7 @@ Verifies 15 test cases and 134,916 assertions:
 Expected output:
 
 ```text
-[doctest] Status: SUCCESS! - 15 test cases passed! (134916 assertions)
+[doctest] Status: SUCCESS! - 15 test cases passed! (134917 assertions)
 ```
 
 ### Step 7: Create a virtual environment and build pyrazobill

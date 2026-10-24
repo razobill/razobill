@@ -26,6 +26,27 @@ struct InternalRecord {
     razobill::core::SlotRecord slots;
     std::vector<const char*> strPointers;
     std::vector<size_t> strLengths;
+
+    void trim(std::size_t maxBytes = 4096) {
+        slots.clear();
+        if (slots.templateStr.capacity() > maxBytes) {
+            std::string().swap(slots.templateStr);
+        }
+        if (slots.ints.capacity() * sizeof(std::int64_t) > maxBytes) {
+            std::vector<std::int64_t>().swap(slots.ints);
+        }
+        if (slots.strs.capacity() * sizeof(std::string_view) > maxBytes) {
+            std::vector<std::string_view>().swap(slots.strs);
+        }
+        strPointers.clear();
+        if (strPointers.capacity() * sizeof(const char*) > maxBytes) {
+            std::vector<const char*>().swap(strPointers);
+        }
+        strLengths.clear();
+        if (strLengths.capacity() * sizeof(size_t) > maxBytes) {
+            std::vector<size_t>().swap(strLengths);
+        }
+    }
 };
 
 // 1 MB retention cap for thread-local working buffers
@@ -46,6 +67,11 @@ struct CAbiScratch {
         if (strViews.capacity() * sizeof(std::string_view) > kScratchKeepBytes)
             std::vector<std::string_view>().swap(strViews);
     }
+};
+
+struct ScratchTrimGuard {
+    CAbiScratch& scratch;
+    ~ScratchTrimGuard() noexcept { scratch.trim(); }
 };
 
 #if defined(__MINGW32__) || defined(__MINGW64__)
@@ -86,9 +112,7 @@ RZ_API RzStatus RzSplit(const char* message, size_t messageLength, RzRecord* out
     std::unique_ptr<InternalRecord> internal;
     if (outRecord->internalHandle) {
         internal.reset(static_cast<InternalRecord*>(outRecord->internalHandle));
-        internal->slots.clear();
-        internal->strPointers.clear();
-        internal->strLengths.clear();
+        internal->trim();
         outRecord->internalHandle = nullptr;
     } else {
         internal = std::make_unique<InternalRecord>();
@@ -156,7 +180,7 @@ RZ_API RzStatus RzJoin(const RzRecord* record, char* outBuffer, size_t bufferCap
     if (record->intCount > 0 && !record->intValues) return RZ_ERR_INVALID_ARGUMENT;
     if (record->strCount > 0 && (!record->strValues || !record->strLengths)) return RZ_ERR_INVALID_ARGUMENT;
 
-    const size_t maxPossibleSlots = (record->templateLength / 3) + 1;
+    const size_t maxPossibleSlots = (record->templateLength / 2) + 1;
     if (record->intCount > maxPossibleSlots || record->strCount > maxPossibleSlots) {
         return RZ_ERR_COUNT_MISMATCH;
     }
@@ -175,6 +199,7 @@ RZ_API RzStatus RzJoin(const RzRecord* record, char* outBuffer, size_t bufferCap
         }
 
         auto& scratch = getCAbiScratch();
+        ScratchTrimGuard guard{scratch};
         scratch.strViews.clear();
         scratch.result.clear();
 
@@ -238,6 +263,7 @@ RZ_API RzStatus RzTemplate(const char* message, size_t messageLength, char* outB
         }
 
         auto& scratch = getCAbiScratch();
+        ScratchTrimGuard guard{scratch};
         scratch.slots.clear();
         const std::string_view msgView(message, messageLength);
         const razobill::Status status =

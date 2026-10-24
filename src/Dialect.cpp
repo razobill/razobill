@@ -128,8 +128,8 @@ public:
         const std::string tok = quote(kTokenRegex);
         const std::string ints = quote(kIntRegex);
         return "arrayStringConcat(arrayZipWith((sep, repl) -> concat(sep, repl), splitByRegexp(" + tok + ", " + c +
-               "), arrayPushBack(arrayMap(t -> if(match(t, " + ints + "), '{i}', '{s}'), extractAll(" + c + ", " +
-               tok + ")), '')))";
+               "), arrayPushBack(arrayMap(t -> if(match(t, " + ints + "), '{i}', '{s}'), extractAll(" + c + ", " + tok +
+               ")), '')))";
     }
 
     /// maps to native xxHash64 built-in function

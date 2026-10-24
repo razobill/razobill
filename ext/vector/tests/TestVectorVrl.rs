@@ -39,7 +39,10 @@ fn test_parse_razobill_raw_bytes() {
     let raw_bytes: &[u8] = b"Worker 100 finished in 250ms";
     let res = parse_razobill(raw_bytes).expect("Failed to parse byte slice");
 
-    assert_eq!(res.get("template").unwrap().as_str().unwrap(), "Worker {i} finished in {s}");
+    assert_eq!(
+        res.get("template").unwrap().as_str().unwrap(),
+        "Worker {i} finished in {s}"
+    );
     let ints = res.get("ints").unwrap().as_array().unwrap();
     assert_eq!(ints[0].as_i64().unwrap(), 100);
     let strs = res.get("strs").unwrap().as_array().unwrap();

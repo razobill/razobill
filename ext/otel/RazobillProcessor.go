@@ -100,15 +100,12 @@ func (p *RazobillProcessor) processRecord(rec plog.LogRecord) {
 		return
 	}
 
-	cMsg := C.CBytes(rawBytes)
-	defer C.free(unsafe.Pointer(cMsg))
-
 	var cRecord C.RzRecord
 	defer C.RzFree(&cRecord)
 
-	// invoke librazobill C ABI to parse message into template and slots
+	// invoke librazobill C ABI with zero heap allocation using direct pointer
 	status := C.RzSplit(
-		(*C.char)(cMsg),
+		(*C.char)(unsafe.Pointer(&rawBytes[0])),
 		C.size_t(len(rawBytes)),
 		&cRecord,
 	)

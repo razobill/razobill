@@ -41,8 +41,7 @@ namespace {
 class TransactionGuard {
 public:
     // ~ ClickHouse ADBC and DuckDB DDL/DML mixed flows avoid explicit multi-statement transactions; guard stays dormant
-    explicit TransactionGuard(Backend& db RZ_LIFETIMEBOUND, Flavor flavor)
-        : db_(db) {
+    explicit TransactionGuard(Backend& db RZ_LIFETIMEBOUND, Flavor flavor) : db_(db) {
         if (flavor == Flavor::DuckDB) {
             active_ = true;
             try {
@@ -90,12 +89,8 @@ private:
 /// in      s non-empty identifier up to 64 bytes; what names diagnostic field
 /// err     throws std::invalid_argument on syntax violation
 void requireIdentifier(const std::string& s, const char* what) {
-    auto isAsciiAlpha = [](char c) noexcept {
-        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
-    };
-    auto isAsciiAlnum = [&isAsciiAlpha](char c) noexcept {
-        return isAsciiAlpha(c) || (c >= '0' && c <= '9');
-    };
+    auto isAsciiAlpha = [](char c) noexcept { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); };
+    auto isAsciiAlnum = [&isAsciiAlpha](char c) noexcept { return isAsciiAlpha(c) || (c >= '0' && c <= '9'); };
     const bool ok = !s.empty() && s.size() <= 64 && (isAsciiAlpha(s[0]) || s[0] == '_') &&
                     std::ranges::all_of(s, [&isAsciiAlnum](char c) { return isAsciiAlnum(c) || c == '_'; });
     if (!ok) throw std::invalid_argument(std::string(what) + " must match [A-Za-z_][A-Za-z0-9_]{0,63}: '" + s + "'");
@@ -123,12 +118,23 @@ std::string quoteIdentifier(std::string_view name) {
 /// in      s non-empty string up to 128 characters
 /// err     throws std::invalid_argument on syntax violation
 void requireName(const std::string& s) {
-    if (s.empty() || s.size() > 128 ||
-        !std::ranges::all_of(s, [](unsigned char c) {
-            return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' ||
-                   c == '.' || c == '-';
+    if (s.empty() || s.size() > 128 || !std::ranges::all_of(s, [](unsigned char c) {
+            return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '.' ||
+                   c == '-';
         }))
         throw std::invalid_argument("meaning must match [A-Za-z0-9_.-]{1,128}: '" + s + "'");
+}
+
+/// validates user pattern to guard against unbounded complexity or ReDoS
+/// in     pattern regex pattern string
+/// err    throws std::invalid_argument if pattern is empty or exceeds 4096 characters
+void requirePattern(const std::string& pattern) {
+    if (pattern.empty()) {
+        throw std::invalid_argument("pattern must not be empty");
+    }
+    if (pattern.size() > 4096) {
+        throw std::invalid_argument("pattern exceeds maximum length of 4096 characters");
+    }
 }
 
 /// serializes floating-point number preserving full ieee-754 precision
@@ -735,6 +741,7 @@ double RazobillEngine::totalEventsLocked() {
 Defined RazobillEngine::define(const std::string& meaning, const std::string& pattern, double weight, bool force) {
     std::scoped_lock lock(mu_);
     requireName(meaning);
+    requirePattern(pattern);
     if (!(weight > 0) || !std::isfinite(weight)) throw std::invalid_argument("weight must be positive and finite");
     if (cfg_.purpose.empty() && !force) throw std::invalid_argument("declare a purpose first");
     requireReadyLocked();
@@ -891,7 +898,10 @@ std::optional<MeaningOf> RazobillEngine::meaningOf(const std::string& text) {
         throw std::invalid_argument(describe(s));
     const auto id = core::xxh64(slots.templateStr);
     std::scoped_lock lock(mu_);
-    if (db_.query("SELECT count(*) FROM rb_form WHERE id = " + std::to_string(id) + " AND form = " + dx_->quote(slots.templateStr)).i64(0, 0) == 0) return std::nullopt;
+    if (db_.query("SELECT count(*) FROM rb_form WHERE id = " + std::to_string(id) +
+                  " AND form = " + dx_->quote(slots.templateStr))
+            .i64(0, 0) == 0)
+        return std::nullopt;
     MeaningOf out{.formId = id, .meaning = std::nullopt, .doubt = std::nullopt, .form_id = id};
     const auto t = db_.query("SELECT meaning, doubt FROM rb_doubt WHERE form_id = " + std::to_string(id));
     if (!t.empty()) {

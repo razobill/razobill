@@ -28,7 +28,6 @@ inline constexpr unsigned char kEscapePrefix = 0x11;
 inline constexpr unsigned char kPlaceholder = 0x12;
 inline constexpr unsigned char kTypeSeparator = 0x13;
 
-
 /// maximum allowed message size (16 MB)
 inline constexpr std::size_t kMaxMessageBytes = std::size_t{16} << 20;
 

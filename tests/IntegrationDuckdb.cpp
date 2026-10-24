@@ -624,6 +624,7 @@ TEST_CASE("TransactionGuard: failure injection triggers rollback") {
     CHECK_THROWS_AS(rz.compact("fail_test"), std::runtime_error);
 
     // Verify that the view was NOT created due to rollback
-    const auto viewCount = proxy->inner().query("SELECT count(*) FROM duckdb_views() WHERE view_name = 'fail_logs'").i64(0, 0);
+    const auto viewCount =
+        proxy->inner().query("SELECT count(*) FROM duckdb_views() WHERE view_name = 'fail_logs'").i64(0, 0);
     CHECK(viewCount == 0);
 }

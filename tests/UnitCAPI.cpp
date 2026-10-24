@@ -273,6 +273,24 @@ TEST_CASE("capi: binary payload with embedded NUL roundtrips losslessly") {
     RzFree(&rec);
 }
 
+TEST_CASE("capi: legacy form key with 5 or more slots reconstructs successfully") {
+    // Legacy form key uses \x12 placeholder and \x13 type separator
+    // For 5 integer slots, length is 11 bytes: 5 * \x12 + \x13 + 5 * 'I'
+    std::string legacyTmpl = "\x12\x12\x12\x12\x12\x13IIIII";
+    int64_t ints[5] = {10, 20, 30, 40, 50};
+
+    RzRecord rec{};
+    rec.templateStr = legacyTmpl.data();
+    rec.templateLength = legacyTmpl.size();
+    rec.intValues = ints;
+    rec.intCount = 5;
+
+    char outBuf[64];
+    size_t outLen = 0;
+    REQUIRE(RzJoin(&rec, outBuf, sizeof(outBuf), &outLen) == RZ_OK);
+    CHECK(std::string_view(outBuf, outLen) == "1020304050");
+}
+
 TEST_CASE("capi: multithreaded concurrent split and join") {
     constexpr int kNumThreads = 4;
     constexpr int kItersPerThread = 500;
@@ -306,4 +324,3 @@ TEST_CASE("capi: multithreaded concurrent split and join") {
     }
     CHECK(allPassed.load());
 }
-

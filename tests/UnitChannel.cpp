@@ -244,10 +244,8 @@ TEST_CASE("Channel failureProbabilityBound handles NaN and negative s") {
 }
 
 TEST_CASE("Channel embed and decode reject non-finite and out-of-range keys and dithers") {
-    std::vector<MeaningChoice> seq = {
-        MeaningChoice{0, {SynonymousOption{0, 0.5}, SynonymousOption{1, 0.5}}},
-        MeaningChoice{1, {SynonymousOption{0, 0.5}, SynonymousOption{1, 0.5}}}
-    };
+    std::vector<MeaningChoice> seq = {MeaningChoice{0, {SynonymousOption{0, 0.5}, SynonymousOption{1, 0.5}}},
+                                      MeaningChoice{1, {SynonymousOption{0, 0.5}, SynonymousOption{1, 0.5}}}};
     std::vector<std::size_t> forms = {0, 1};
 
     const double nanVal = std::numeric_limits<double>::quiet_NaN();
@@ -283,10 +281,8 @@ TEST_CASE("Channel embed and decode reject non-finite and out-of-range keys and 
 }
 
 TEST_CASE("Channel exactFailureProbability monotonicity with payload bits") {
-    std::vector<MeaningChoice> seq = {
-        MeaningChoice{0, {SynonymousOption{0, 0.5}, SynonymousOption{1, 0.5}}},
-        MeaningChoice{1, {SynonymousOption{0, 0.5}, SynonymousOption{1, 0.5}}}
-    };
+    std::vector<MeaningChoice> seq = {MeaningChoice{0, {SynonymousOption{0, 0.5}, SynonymousOption{1, 0.5}}},
+                                      MeaningChoice{1, {SynonymousOption{0, 0.5}, SynonymousOption{1, 0.5}}}};
     double p1 = exactFailureProbability(seq, 1);
     double p2 = exactFailureProbability(seq, 2);
     double p3 = exactFailureProbability(seq, 3);
@@ -295,4 +291,3 @@ TEST_CASE("Channel exactFailureProbability monotonicity with payload bits") {
     CHECK(p1 >= 0.0);
     CHECK(p3 <= 1.0);
 }
-

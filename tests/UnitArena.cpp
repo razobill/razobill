@@ -71,6 +71,23 @@ TEST_CASE("MemoryArena multi-block chunk expansion and reset reuse") {
     CHECK(arena.capacity() == capAfterGrowth);
 }
 
+TEST_CASE("MemoryArena trim releases excess blocks exceeding capacity threshold") {
+    MemoryArena arena(1024);
+    for (int i = 0; i < 10; ++i) {
+        void* p = arena.allocate(1500, 64);
+        REQUIRE(p != nullptr);
+    }
+    CHECK(arena.totalAllocatedBlocks() >= 10);
+    const std::size_t capBefore = arena.capacity();
+    CHECK(capBefore >= 15000);
+
+    // trim retaining at most 2048 bytes
+    arena.trim(2048);
+    CHECK(arena.allocatedBytes() == 0);
+    CHECK(arena.capacity() < capBefore);
+    CHECK(arena.totalAllocatedBlocks() <= 2);
+}
+
 // pins deduplicating string interning, ID stability, and generational GC
 TEST_CASE("StringPool interning and garbage collection") {
     StringPool pool;
@@ -232,4 +249,3 @@ TEST_CASE("MemoryArena degenerate parameters and zero block size") {
     REQUIRE(p != nullptr);
     CHECK(arenaZero.allocate(0, 8) == nullptr);
 }
-

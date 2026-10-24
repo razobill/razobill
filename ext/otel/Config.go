@@ -7,8 +7,10 @@
 
 package razobillprocessor
 
+import "errors"
+
 // Config defines configuration options for the razobill log processor
-// in: Mode must be "semantic" or "exact"
+// in: Mode must be "semantic"
 // out: validated processor configuration struct
 type Config struct {
 	Mode        string `mapstructure:"mode"`
@@ -32,12 +34,12 @@ func createDefaultConfig() *Config {
 	return CreateDefaultConfig()
 }
 
-// Validate checks configuration fields and normalizes unknown scan modes
-// inv: cfg.Mode is either "semantic" or "exact" after validation
-// err: always returns nil, normalizing invalid modes to "semantic"
+// Validate checks configuration fields and ensures valid scan modes
+// inv: cfg.Mode is "semantic"
+// err: returns error if cfg.Mode is not "semantic"
 func (cfg *Config) Validate() error {
-	if cfg.Mode != "semantic" && cfg.Mode != "exact" {
-		cfg.Mode = "semantic"
+	if cfg.Mode != "semantic" {
+		return errors.New("mode must be 'semantic'")
 	}
 	return nil
 }

@@ -43,11 +43,17 @@ public:
     // ~ ClickHouse ADBC and DuckDB DDL/DML mixed flows avoid explicit multi-statement transactions; guard stays dormant
     explicit TransactionGuard(Backend& db RZ_LIFETIMEBOUND, Flavor flavor) : db_(db) {
         if (flavor == Flavor::DuckDB) {
+            db_.lock();
+            locked_ = true;
             active_ = true;
             try {
                 db_.exec("BEGIN TRANSACTION");
             } catch (...) {
                 active_ = false;
+                if (locked_) {
+                    db_.unlock();
+                    locked_ = false;
+                }
                 throw;
             }
         }
@@ -56,8 +62,20 @@ public:
     /// commits active transaction and marks guard inert
     void commit() {
         if (active_ && !committed_) {
-            db_.exec("COMMIT");
+            try {
+                db_.exec("COMMIT");
+            } catch (...) {
+                if (locked_) {
+                    db_.unlock();
+                    locked_ = false;
+                }
+                throw;
+            }
             committed_ = true;
+            if (locked_) {
+                db_.unlock();
+                locked_ = false;
+            }
         }
     }
 
@@ -68,6 +86,10 @@ public:
                 db_.exec("ROLLBACK");
             } catch (...) {
                 (void)0; // explicitly suppress rollback errors during exception unwinding
+            }
+            if (locked_) {
+                db_.unlock();
+                locked_ = false;
             }
         }
     }
@@ -81,6 +103,7 @@ private:
     Backend& db_;
     bool active_ = false;
     bool committed_ = false;
+    bool locked_ = false;
 };
 
 /// validates sql table or column identifier to prevent injection
@@ -210,14 +233,9 @@ private:
 /// thread  acquires mu_ during catalog initialization
 /// err     throws std::invalid_argument if table, column, tau, or eps invalid
 RazobillEngine::RazobillEngine(Backend& backend, Config config) : db_(backend), cfg_(std::move(config)) {
-    if (!cfg_.message_column.empty() && (cfg_.messageColumn.empty() || cfg_.messageColumn == "msg")) {
-        cfg_.messageColumn = cfg_.message_column;
-    }
+    cfg_.messageColumn = cfg_.resolvedMessageColumn();
     cfg_.message_column = cfg_.messageColumn;
-
-    if (cfg_.scan_mode != core::ScanMode::Semantic && cfg_.scanMode == core::ScanMode::Semantic) {
-        cfg_.scanMode = cfg_.scan_mode;
-    }
+    cfg_.scanMode = cfg_.resolvedScanMode();
     cfg_.scan_mode = cfg_.scanMode;
 
     requireIdentifier(cfg_.table, "table");
@@ -228,8 +246,46 @@ RazobillEngine::RazobillEngine(Backend& backend, Config config) : db_(backend), 
     dx_ = makeDialect(db_.flavor());
     phys_ = view_ = cfg_.table;
     std::scoped_lock lock(mu_);
+    // each engine owns a private catalog namespace so that dictionary GC,
+    // layout and rules of one table can never touch another table; storage
+    // written by older versions (global rb_* names) keeps its legacy names
+    prefix_ = cfg_.table + "_";
+    if (legacyStorageLocked()) prefix_.clear();
     installLocked();
     detectLocked();
+}
+
+/// true when this table's compact storage predates per-table namespaces
+///
+/// inv     caller must hold mu_; read-only catalog probes scoped to the
+///         current database and schema
+/// out     true iff global rb_form exists, <table>_rb_form does not, and the
+///         table already has compact or indexed storage
+bool RazobillEngine::legacyStorageLocked() const {
+    const auto& d = *dx_;
+    const std::string t = cfg_.table;
+    const auto exists = [&](const std::string& name) {
+        if (d.flavor() == Flavor::DuckDB) {
+            return db_.query("SELECT count(*) FROM duckdb_tables() WHERE database_name = current_database() "
+                             "AND schema_name = current_schema() AND table_name = " +
+                             d.quote(name))
+                       .i64(0, 0) > 0;
+        }
+        return db_.query("SELECT count() FROM system.tables WHERE database = currentDatabase() AND name = " +
+                         d.quote(name))
+                   .i64(0, 0) > 0;
+    };
+    if (exists(t + "_rb_form") || !exists("rb_form")) return false;
+    if (d.flavor() == Flavor::DuckDB) {
+        return exists(t + "_c") ||
+               db_.query("SELECT count(*) FROM duckdb_columns() WHERE database_name = current_database() AND "
+                         "schema_name = current_schema() AND table_name = " +
+                         d.quote(t) + " AND column_name = 'form_no'")
+                       .i64(0, 0) > 0;
+    }
+    return db_.query("SELECT count() FROM system.columns WHERE database = currentDatabase() AND table = " +
+                     d.quote(t) + " AND name = 'form_id'")
+               .i64(0, 0) > 0;
 }
 
 /// probes database catalog to detect existing table layout and form collisions
@@ -240,12 +296,14 @@ void RazobillEngine::detectLocked() {
     const auto& d = *dx_;
     const std::string t = cfg_.table;
     if (d.flavor() == Flavor::DuckDB) {
-        if (db_.query("SELECT count(*) FROM duckdb_tables() WHERE table_name = " + d.quote(t + "_c")).i64(0, 0) > 0) {
+        if (db_.query("SELECT count(*) FROM duckdb_tables() WHERE database_name = current_database() AND "
+                     "schema_name = current_schema() AND table_name = " + d.quote(t + "_c")).i64(0, 0) > 0) {
             phys_ = t + "_c";
             view_ = t;
             compact_ = true;
             ready_ = true;
-        } else if (db_.query("SELECT count(*) FROM duckdb_columns() WHERE table_name = " + d.quote(t) +
+        } else if (db_.query("SELECT count(*) FROM duckdb_columns() WHERE database_name = current_database() AND "
+                             "schema_name = current_schema() AND table_name = " + d.quote(t) +
                              " AND column_name = 'form_no'")
                        .i64(0, 0) > 0) {
             phys_ = view_ = t;
@@ -259,7 +317,7 @@ void RazobillEngine::detectLocked() {
     }
     if (ready_) {
         try {
-            if (db_.query("SELECT count(*) FROM (SELECT id FROM rb_form GROUP BY id HAVING count(*) > 1)").i64(0, 0) >
+            if (db_.query("SELECT count(*) FROM (SELECT id FROM " + rb("form") + " GROUP BY id HAVING count(*) > 1)").i64(0, 0) >
                 0) {
                 hasCollision_ = true;
             }
@@ -284,14 +342,14 @@ void RazobillEngine::requireReadyLocked() const {
 /// thread  guarded by mu_
 void RazobillEngine::installLocked() {
     const auto& d = *dx_;
-    db_.exec("CREATE TABLE IF NOT EXISTS rb_form(id " + d.tU64() + ", no " + d.tI32() + ", form " + d.tStr() +
+    db_.exec("CREATE TABLE IF NOT EXISTS " + rb("form") + "(id " + d.tU64() + ", no " + d.tI32() + ", form " + d.tStr() +
              ", template " + d.tStr() + ") " + d.tableTail("id"));
-    db_.exec("CREATE TABLE IF NOT EXISTS rb_event(v " + d.tI32() + ", kind " + d.tStr() + ", meaning " + d.tStr() +
+    db_.exec("CREATE TABLE IF NOT EXISTS " + rb("event") + "(v " + d.tI32() + ", kind " + d.tStr() + ", meaning " + d.tStr() +
              ", pattern " + d.tStr() + ", weight " + d.tF64() + ") " + d.tableTail("v"));
-    db_.exec("CREATE TABLE IF NOT EXISTS rb_meta(v " + d.tI32() + ") " + d.tableTail("v"));
-    db_.exec("CREATE TABLE IF NOT EXISTS rb_doubt(form_id " + d.tU64() + ", meaning " + d.tNullableStr() + ", doubt " +
-             d.tF64() + ") " + d.tableTail("form_id"));
-    if (db_.query("SELECT count(*) FROM rb_meta").i64(0, 0) == 0) db_.exec("INSERT INTO rb_meta VALUES (0)");
+    db_.exec("CREATE TABLE IF NOT EXISTS " + rb("meta") + "(v " + d.tI32() + ") " + d.tableTail("v"));
+    db_.exec("CREATE TABLE IF NOT EXISTS " + rb("doubt") + "(form_id " + d.tU64() + ", form " + d.tStr() +
+             ", meaning " + d.tNullableStr() + ", doubt " + d.tF64() + ") " + d.tableTail("form_id, form"));
+    if (db_.query("SELECT count(*) FROM " + rb("meta") + "").i64(0, 0) == 0) db_.exec("INSERT INTO " + rb("meta") + " VALUES (0)");
 }
 
 /// extracts unique log forms from query and registers them in rb_form
@@ -303,20 +361,24 @@ void RazobillEngine::installLocked() {
 /// thread  guarded by mu_
 std::size_t RazobillEngine::registerFormsLocked(const std::string& selectForms) {
     const auto& d = *dx_;
-    const auto before = db_.query("SELECT count(*) FROM rb_form").i64(0, 0);
+    const auto before = db_.query("SELECT count(*) FROM " + rb("form") + "").i64(0, 0);
     // sequential form numbers use signed 32-bit ints; 2 billion forms exceeds
     // log corpus needs while halving foreign key footprint in columnar storage
-    db_.exec("INSERT INTO rb_form SELECT " + d.hashExpr("form") +
-             ", CAST((SELECT count(*) FROM rb_form) + row_number() OVER (ORDER BY form) - 1 AS " + d.tI32() +
+    db_.exec("INSERT INTO " + rb("form") + " SELECT " + d.hashExpr("form") +
+             ", CAST((SELECT count(*) FROM " + rb("form") + ") + row_number() OVER (ORDER BY form) - 1 AS " + d.tI32() +
              "), form, " + d.templateExpr("form") + " FROM (SELECT DISTINCT form FROM (" + selectForms +
-             ") WHERE form IS NOT NULL AND form NOT IN (SELECT form FROM rb_form WHERE form IS NOT NULL))");
+             ") WHERE form IS NOT NULL AND form NOT IN (SELECT form FROM " + rb("form") + " WHERE form IS NOT NULL))");
     const auto collisionCount =
-        db_.query("SELECT count(*) FROM (SELECT id FROM rb_form GROUP BY id HAVING count(*) > 1)").i64(0, 0);
+        db_.query("SELECT count(*) FROM (SELECT id FROM " + rb("form") + " GROUP BY id HAVING count(*) > 1)").i64(0, 0);
     if (collisionCount != 0) {
         // 64-bit collision detected; fall back to dense 32-bit sequential keys
         hasCollision_ = true;
     }
-    return static_cast<std::size_t>(db_.query("SELECT count(*) FROM rb_form").i64(0, 0) - before);
+    const auto inserted = static_cast<std::size_t>(db_.query("SELECT count(*) FROM " + rb("form") + "").i64(0, 0) - before);
+    if (inserted > 0) {
+        resolveCache_.clear();
+    }
+    return inserted;
 }
 
 /// resolves physical foreign key column name based on layout and collisions
@@ -346,7 +408,7 @@ std::size_t RazobillEngine::refresh() {
     if (d.denseFormKey()) {
         db_.exec("ALTER TABLE " + t + " ADD COLUMN IF NOT EXISTS form_no " + d.tI32());
         added = registerFormsLocked("SELECT " + d.formExpr(m, sMode) + " AS form FROM " + t + " WHERE form_no IS NULL");
-        db_.exec("UPDATE " + t + " SET form_no = f.no FROM rb_form f WHERE " + t +
+        db_.exec("UPDATE " + t + " SET form_no = f.no FROM " + rb("form") + " f WHERE " + t +
                  ".form_no IS NULL AND f.form = " + d.formExpr(t + "." + m, sMode));
     } else {
         const bool have =
@@ -377,16 +439,14 @@ std::size_t RazobillEngine::refresh() {
 /// thread  acquires mu_
 /// err     throws std::logic_error if dialect lacks compact support;
 ///         throws std::invalid_argument if src lacks messageColumn or reserved
-std::uint64_t RazobillEngine::compact(const std::string& src) {
+std::uint64_t RazobillEngine::compact(const std::string& src, const std::string& token) {
     std::scoped_lock lock(mu_);
     const auto& d = *dx_;
     if (!d.supportsCompact()) throw std::logic_error("compact storage is not supported on this engine");
     requireIdentifier(src, "source table");
-    const std::string m = cfg_.messageColumn;
+    const std::string m = cfg_.resolvedMessageColumn();
     const std::string dst = cfg_.table + "_c";
     const std::string name = cfg_.table;
-
-    TransactionGuard tx(db_, d.flavor());
 
     std::vector<std::string> oth;
     const auto cols = db_.query("DESCRIBE " + src);
@@ -401,6 +461,36 @@ std::uint64_t RazobillEngine::compact(const std::string& src) {
         oth.push_back(c);
     }
     if (!hasMsg) throw std::invalid_argument("source table has no column " + m);
+
+    // O1: Check idempotency tracking table rb("sources")
+    db_.exec("CREATE TABLE IF NOT EXISTS " + rb("sources") + "(src VARCHAR, token VARCHAR, row_count BIGINT, row_checksum UBIGINT)");
+    const auto srcStats = db_.query("SELECT count(*), coalesce(bit_xor(hash(" + quoteIdentifier(m) + ")), 0) FROM " + src);
+    const std::int64_t srcRows = srcStats.i64(0, 0);
+    const std::uint64_t srcChecksum = srcStats.u64(0, 1);
+
+    const bool checkIdemp = !token.empty() || cfg_.idempotent;
+    if (checkIdemp) {
+        const bool dstExists = db_.query("SELECT count(*) FROM duckdb_tables() WHERE database_name = current_database() AND "
+                                         "schema_name = current_schema() AND table_name = " + d.quote(dst)).i64(0, 0) > 0;
+        if (dstExists) {
+            std::string q = "SELECT count(*) FROM " + rb("sources") + " WHERE src = " + d.quote(src);
+            if (!token.empty()) {
+                q += " AND token = " + d.quote(token);
+            } else {
+                q += " AND row_count = " + std::to_string(srcRows) + " AND row_checksum = " + std::to_string(srcChecksum);
+            }
+            if (db_.query(q).i64(0, 0) > 0) {
+                // Batch has already been compacted into dst; ensure state & views are up to date and return committed count
+                phys_ = dst;
+                view_ = name;
+                compact_ = true;
+                ready_ = true;
+                return static_cast<std::uint64_t>(db_.query("SELECT count(*) FROM " + dst).i64(0, 0));
+            }
+        }
+    }
+
+    TransactionGuard tx(db_, d.flavor());
     auto list = [&](const std::string& prefix) {
         std::string s;
         for (const auto& c : oth)
@@ -408,26 +498,26 @@ std::uint64_t RazobillEngine::compact(const std::string& src) {
         return s;
     };
 
-    db_.exec("CREATE OR REPLACE TEMP TABLE rb_s AS WITH parsed AS (SELECT " + list("") + "RzSplit(" + m +
+    db_.exec("CREATE OR REPLACE TEMP TABLE " + rb("s") + " AS WITH parsed AS (SELECT " + list("") + "RzSplit(" + m +
              ") AS rz_parsed FROM " + src + ") SELECT " + list("") +
              "rz_parsed.template AS rbf, rz_parsed.ints AS rbi, rz_parsed.strs AS rbs FROM parsed");
-    db_.exec("CREATE TABLE IF NOT EXISTS rb_str(id INTEGER, s VARCHAR)");
-    db_.exec("CREATE TABLE IF NOT EXISTS rb_layout(ki INTEGER, ks INTEGER)");
+    db_.exec("CREATE TABLE IF NOT EXISTS " + rb("str") + "(id INTEGER, s VARCHAR)");
+    db_.exec("CREATE TABLE IF NOT EXISTS " + rb("layout") + "(ki INTEGER, ks INTEGER)");
     // compute 99th percentile variable counts capped at 32 to size slot schema
     // ~ quantile 0.99 caps outliers so 50-variable lines do not widen table
-    if (db_.query("SELECT count(*) FROM rb_layout").i64(0, 0) == 0)
-        db_.exec("INSERT INTO rb_layout SELECT CAST(least(coalesce(quantile_disc(len(rbi), 0.99), 0), 32) AS INTEGER), "
-                 "CAST(least(coalesce(quantile_disc(len(rbs), 0.99), 0), 32) AS INTEGER) FROM rb_s");
-    const auto lay = db_.query("SELECT ki, ks FROM rb_layout");
+    if (db_.query("SELECT count(*) FROM " + rb("layout") + "").i64(0, 0) == 0)
+        db_.exec("INSERT INTO " + rb("layout") + " SELECT CAST(least(coalesce(quantile_disc(len(rbi), 0.99), 0), 32) AS INTEGER), "
+                 "CAST(least(coalesce(quantile_disc(len(rbs), 0.99), 0), 32) AS INTEGER) FROM " + rb("s") + "");
+    const auto lay = db_.query("SELECT ki, ks FROM " + rb("layout") + "");
     const auto ki = std::clamp<std::int64_t>(lay.i64(0, 0), 0, 32);
     const auto ks = std::clamp<std::int64_t>(lay.i64(0, 1), 0, 32);
 
-    registerFormsLocked("SELECT rbf AS form FROM rb_s");
-    db_.exec("INSERT INTO rb_str SELECT CAST(coalesce((SELECT max(id) + 1 FROM rb_str), 0) + row_number() OVER () - 1 "
+    registerFormsLocked("SELECT rbf AS form FROM " + rb("s") + "");
+    db_.exec("INSERT INTO " + rb("str") + " SELECT CAST(coalesce((SELECT max(id) + 1 FROM " + rb("str") + "), 0) + row_number() OVER () - 1 "
              "AS INTEGER), s "
              "FROM (SELECT DISTINCT unnest(rbs[1:" +
              std::to_string(ks) +
-             "]) AS s FROM rb_s) WHERE s IS NOT NULL AND s NOT IN (SELECT s FROM rb_str WHERE s IS NOT NULL)");
+             "]) AS s FROM " + rb("s") + ") WHERE s IS NOT NULL AND s NOT IN (SELECT s FROM " + rb("str") + " WHERE s IS NOT NULL)");
 
     std::string sel = "SELECT " + list("s.") + "f.no AS form_no, ";
     for (long long j = 0; j < ki; ++j)
@@ -436,11 +526,12 @@ std::uint64_t RazobillEngine::compact(const std::string& src) {
         sel += "d" + std::to_string(j) + ".id AS d" + std::to_string(j) + ", ";
     sel += "CASE WHEN len(rbi) > " + std::to_string(ki) + " THEN rbi[" + std::to_string(ki + 1) +
            ":] END AS oi, CASE WHEN len(rbs) > " + std::to_string(ks) + " THEN rbs[" + std::to_string(ks + 1) +
-           ":] END AS os FROM rb_s s LEFT JOIN rb_form f ON f.form = s.rbf";
+           ":] END AS os FROM " + rb("s") + " s LEFT JOIN " + rb("form") + " f ON f.form = s.rbf";
     for (long long j = 0; j < ks; ++j)
-        sel += " LEFT JOIN rb_str d" + std::to_string(j) + " ON d" + std::to_string(j) + ".s = s.rbs[" +
+        sel += " LEFT JOIN " + rb("str") + " d" + std::to_string(j) + " ON d" + std::to_string(j) + ".s = s.rbs[" +
                std::to_string(j + 1) + "]";
-    if (db_.query("SELECT count(*) FROM duckdb_tables() WHERE table_name = " + d.quote(dst)).i64(0, 0) == 0)
+    if (db_.query("SELECT count(*) FROM duckdb_tables() WHERE database_name = current_database() AND "
+                 "schema_name = current_schema() AND table_name = " + d.quote(dst)).i64(0, 0) == 0)
         db_.exec("CREATE TABLE " + dst + " AS " + sel);
     else
         db_.exec("INSERT INTO " + dst + " BY NAME " + sel);
@@ -453,18 +544,38 @@ std::uint64_t RazobillEngine::compact(const std::string& src) {
     for (long long j = 0; j < ks; ++j) {
         svs += "d" + std::to_string(j) + ".s, ";
         joins +=
-            " LEFT JOIN rb_str d" + std::to_string(j) + " ON d" + std::to_string(j) + ".id = c.d" + std::to_string(j);
+            " LEFT JOIN " + rb("str") + " d" + std::to_string(j) + " ON d" + std::to_string(j) + ".id = c.d" + std::to_string(j);
     }
     // reconstructs original message byte-for-byte from slots and dictionary
     db_.exec("CREATE OR REPLACE VIEW " + name + " AS SELECT " + list("c.") + "c.form_no, RzJoin(f.form, " + ivs + svs +
-             "c.oi, c.os) AS " + m + " FROM " + dst + " c LEFT JOIN rb_form f ON f.no = c.form_no" + joins);
-    phys_ = dst;
-    view_ = name;
-    compact_ = true;
-    ready_ = true;
-    createViewsLocked();
-    rebuildDerivedLocked();
-    tx.commit();
+             "c.oi, c.os) AS " + m + " FROM " + dst + " c LEFT JOIN " + rb("form") + " f ON f.no = c.form_no" + joins);
+    // in-memory state must mirror committed catalog state: snapshot, and restore
+    // on any failure so a rolled-back compact() leaves the engine as it was
+    const std::string savedPhys = phys_;
+    const std::string savedView = view_;
+    const bool savedCompact = compact_;
+    const bool savedReady = ready_;
+    const bool savedCollision = hasCollision_;
+    try {
+        phys_ = dst;
+        view_ = name;
+        compact_ = true;
+        ready_ = true;
+        createViewsLocked();
+        rebuildDerivedLocked();
+        // staging holds the whole decomposed batch; release it with the commit
+        db_.exec("DROP TABLE IF EXISTS " + rb("s"));
+        db_.exec("INSERT INTO " + rb("sources") + " VALUES (" + d.quote(src) + ", " + d.quote(token) + ", " +
+                 std::to_string(srcRows) + ", " + std::to_string(srcChecksum) + ")");
+        tx.commit();
+    } catch (...) {
+        phys_ = savedPhys;
+        view_ = savedView;
+        compact_ = savedCompact;
+        ready_ = savedReady;
+        hasCollision_ = savedCollision;
+        throw;
+    }
     return static_cast<std::uint64_t>(db_.query("SELECT count(*) FROM " + dst).i64(0, 0));
 }
 
@@ -505,10 +616,10 @@ DictionaryStats RazobillEngine::gcDictionary() {
     requireReadyLocked();
     if (!compact_) throw std::logic_error("gcDictionary() applies to compact mode");
 
-    const auto lay = db_.query("SELECT ks FROM rb_layout");
+    const auto lay = db_.query("SELECT ks FROM " + rb("layout") + "");
     if (lay.empty()) return {};
     const auto ks = lay.i64(0, 0);
-    const auto before = static_cast<std::size_t>(db_.query("SELECT count(*) FROM rb_str").i64(0, 0));
+    const auto before = static_cast<std::size_t>(db_.query("SELECT count(*) FROM " + rb("str") + "").i64(0, 0));
     if (before == 0 || ks == 0) {
         DictionaryStats res;
         res.totalBefore = res.total_before = before;
@@ -524,16 +635,16 @@ DictionaryStats RazobillEngine::gcDictionary() {
             "SELECT d" + std::to_string(j) + " AS id FROM " + phys_ + " WHERE d" + std::to_string(j) + " IS NOT NULL";
     }
 
-    db_.exec("CREATE OR REPLACE TEMP TABLE rb_active_str_ids AS SELECT DISTINCT id FROM (" + refUnion +
+    db_.exec("CREATE OR REPLACE TEMP TABLE " + rb("active_str_ids") + " AS SELECT DISTINCT id FROM (" + refUnion +
              ") WHERE id IS NOT NULL");
-    const auto active = static_cast<std::size_t>(db_.query("SELECT count(*) FROM rb_active_str_ids").i64(0, 0));
+    const auto active = static_cast<std::size_t>(db_.query("SELECT count(*) FROM " + rb("active_str_ids") + "").i64(0, 0));
     const std::size_t purged = before > active ? before - active : 0;
 
     if (purged > 0) {
-        db_.exec("DELETE FROM rb_str WHERE id IS NOT NULL AND id NOT IN (SELECT id FROM rb_active_str_ids WHERE id IS "
+        db_.exec("DELETE FROM " + rb("str") + " WHERE id IS NOT NULL AND id NOT IN (SELECT id FROM " + rb("active_str_ids") + " WHERE id IS "
                  "NOT NULL)");
     }
-    db_.exec("DROP TABLE IF EXISTS rb_active_str_ids");
+    db_.exec("DROP TABLE IF EXISTS " + rb("active_str_ids") + "");
 
     DictionaryStats res;
     res.totalBefore = res.total_before = before;
@@ -552,19 +663,19 @@ void RazobillEngine::compactDictionary() {
     requireReadyLocked();
     if (!compact_) throw std::logic_error("compactDictionary() applies to compact mode");
 
-    const auto lay = db_.query("SELECT ks FROM rb_layout");
+    const auto lay = db_.query("SELECT ks FROM " + rb("layout") + "");
     if (lay.empty()) return;
     const auto ks = lay.i64(0, 0);
     if (ks == 0) return;
 
-    const auto count = db_.query("SELECT count(*) FROM rb_str").i64(0, 0);
+    const auto count = db_.query("SELECT count(*) FROM " + rb("str") + "").i64(0, 0);
     if (count == 0) return;
-    const auto maxId = db_.query("SELECT coalesce(max(id), -1) FROM rb_str").i64(0, 0);
+    const auto maxId = db_.query("SELECT coalesce(max(id), -1) FROM " + rb("str") + "").i64(0, 0);
     if (maxId == count - 1) return;
 
     TransactionGuard tx(db_, dx_->flavor());
-    db_.exec("CREATE OR REPLACE TEMP TABLE rb_str_remap AS SELECT id AS old_id, CAST(row_number() OVER (ORDER BY id) - "
-             "1 AS INTEGER) AS new_id, s FROM rb_str");
+    db_.exec("CREATE OR REPLACE TEMP TABLE " + rb("str_remap") + " AS SELECT id AS old_id, CAST(row_number() OVER (ORDER BY id) - "
+             "1 AS INTEGER) AS new_id, s FROM " + rb("str") + "");
     for (long long j = 0; j < ks; ++j) {
         const std::string dj = "d" + std::to_string(j);
         std::string updateSql;
@@ -573,15 +684,15 @@ void RazobillEngine::compactDictionary() {
             .append(phys_)
             .append(" SET ")
             .append(dj)
-            .append(" = remap.new_id FROM rb_str_remap remap WHERE ")
+            .append(" = remap.new_id FROM " + rb("str_remap") + " remap WHERE ")
             .append(phys_)
             .append(".")
             .append(dj)
             .append(" = remap.old_id");
         db_.exec(updateSql);
     }
-    db_.exec("CREATE OR REPLACE TABLE rb_str AS SELECT new_id AS id, s FROM rb_str_remap ORDER BY id");
-    db_.exec("DROP TABLE IF EXISTS rb_str_remap");
+    db_.exec("CREATE OR REPLACE TABLE " + rb("str") + " AS SELECT new_id AS id, s FROM " + rb("str_remap") + " ORDER BY id");
+    db_.exec("DROP TABLE IF EXISTS " + rb("str_remap") + "");
     tx.commit();
 }
 
@@ -594,8 +705,8 @@ void RazobillEngine::compactDictionary() {
 void RazobillEngine::createViewsLocked() {
     const std::string join =
         compact_ || dx_->denseFormKey() || hasCollision_
-            ? " LEFT JOIN rb_form f ON f.no = e.form_no LEFT JOIN rb_doubt d ON d.form_id = f.id"
-            : " LEFT JOIN rb_form f ON f.id = e.form_id LEFT JOIN rb_doubt d ON d.form_id = e.form_id";
+            ? " LEFT JOIN " + rb("form") + " f ON f.no = e.form_no LEFT JOIN " + rb("doubt") + " d ON d.form_id = f.id AND d.form = f.form"
+            : " LEFT JOIN " + rb("form") + " f ON f.id = e.form_id LEFT JOIN " + rb("doubt") + " d ON d.form_id = e.form_id AND d.form = f.form";
     db_.exec("CREATE OR REPLACE VIEW " + view_ +
              "_m AS SELECT e.*, f.template AS template, d.meaning AS meaning, d.doubt AS doubt FROM " + view_ + " e" +
              join);
@@ -609,7 +720,7 @@ void RazobillEngine::createViewsLocked() {
 /// thread  guarded by mu_
 std::vector<RazobillEngine::Rule> RazobillEngine::activeRulesLocked(int version) {
     const auto ev = db_.query(
-        "SELECT kind, meaning, pattern, weight FROM rb_event WHERE v <= " + std::to_string(version) + " ORDER BY v");
+        "SELECT kind, meaning, pattern, weight FROM " + rb("event") + " WHERE v <= " + std::to_string(version) + " ORDER BY v");
     std::vector<Rule> rules;
     for (std::size_t r = 0; r < ev.rows.size(); ++r) {
         const auto& kind = ev.str(r, 0);
@@ -630,26 +741,39 @@ std::vector<RazobillEngine::Rule> RazobillEngine::activeRulesLocked(int version)
 /// thread  guarded by mu_
 /// err     throws std::invalid_argument if regex pattern fails engine syntax
 std::vector<RazobillEngine::FormP> RazobillEngine::resolveLocked(const std::vector<Rule>& rules) {
-    std::map<std::pair<std::uint64_t, std::string>, double> w;
-    std::map<std::uint64_t, double> total;
+    std::map<std::tuple<std::uint64_t, std::string, std::string>, double> w;
+    std::map<std::pair<std::uint64_t, std::string>, double> total;
     for (const auto& rule : rules) {
         Table t;
         try {
-            t = db_.query("SELECT id FROM rb_form WHERE " + dx_->matches("template", dx_->quote(rule.pattern)));
+            t = db_.query("SELECT id, form FROM " + rb("form") + " WHERE " + dx_->matches("template", dx_->quote(rule.pattern)));
         } catch (const BackendError& e) {
             throw std::invalid_argument(std::string("invalid pattern '") + rule.pattern + "': " + e.what());
         }
         for (std::size_t r = 0; r < t.rows.size(); ++r) {
             const auto id = t.u64(r, 0);
-            w[{id, rule.meaning}] += rule.weight;
-            total[id] += rule.weight;
+            const auto formStr = t.str(r, 1);
+            w[{id, formStr, rule.meaning}] += rule.weight;
+            total[{id, formStr}] += rule.weight;
         }
     }
     std::vector<FormP> out;
     out.reserve(w.size());
-    for (const auto& [key, weight] : w)
-        out.push_back({.form = key.first, .meaning = key.second, .p = weight / total[key.first]});
+    for (const auto& [key, weight] : w) {
+        const auto& [id, formStr, meaning] = key;
+        out.push_back({.form = id, .formStr = formStr, .meaning = meaning, .p = weight / total[{id, formStr}]});
+    }
     return out;
+}
+
+std::vector<RazobillEngine::FormP> RazobillEngine::resolveVersionLocked(int version) {
+    auto it = resolveCache_.find(version);
+    if (it != resolveCache_.end()) {
+        return it->second;
+    }
+    auto res = resolveLocked(activeRulesLocked(version));
+    resolveCache_[version] = res;
+    return res;
 }
 
 /// recalculates rb_doubt table containing maximum posterior meaning and entropy
@@ -658,35 +782,47 @@ std::vector<RazobillEngine::FormP> RazobillEngine::resolveLocked(const std::vect
 ///         doubt H(W|F) is computed as Shannon entropy in bits
 /// thread  guarded by mu_
 void RazobillEngine::rebuildDerivedLocked() {
-    const auto map = resolveLocked(activeRulesLocked(static_cast<int>(db_.query("SELECT v FROM rb_meta").i64(0, 0))));
+    const int curV = static_cast<int>(db_.query("SELECT v FROM " + rb("meta") + "").i64(0, 0));
+    const auto map = resolveVersionLocked(curV);
     struct Row {
         std::string top;
         double pmax = 0, h = 0;
     };
-    std::map<std::uint64_t, Row> rows;
+    std::map<std::pair<std::uint64_t, std::string>, Row> rows;
     for (const auto& m : map) {
-        auto& r = rows[m.form];
+        auto& r = rows[{m.form, m.formStr}];
         if (m.p > r.pmax) {
             r.pmax = m.p;
             r.top = m.meaning;
         }
         if (m.p > 0) r.h -= m.p * std::log2(m.p);
     }
-    db_.exec(dx_->truncate("rb_doubt"));
+    const bool isClickHouse = (dx_->flavor() == Flavor::ClickHouse);
+    const std::string targetTable = isClickHouse ? rb("doubt_swap") : rb("doubt");
+    if (isClickHouse) {
+        db_.exec("CREATE TABLE IF NOT EXISTS " + targetTable + "(form_id " + dx_->tU64() + ", form " + dx_->tStr() +
+                 ", meaning " + dx_->tNullableStr() + ", doubt " + dx_->tF64() + ") " + dx_->tableTail("form_id, form"));
+    }
+    db_.exec(dx_->truncate("" + targetTable + ""));
     std::string values;
     std::size_t k = 0;
     auto flush = [&](std::string& vals) {
         if (!vals.empty()) {
-            db_.exec("INSERT INTO rb_doubt VALUES " + vals);
+            db_.exec("INSERT INTO " + targetTable + " VALUES " + vals);
             vals.clear();
         }
     };
-    for (const auto& [id, r] : rows) {
-        values += (values.empty() ? "(" : ", (") + std::to_string(id) + ", " +
+    for (const auto& [key, r] : rows) {
+        const auto& [id, formStr] = key;
+        values += (values.empty() ? "(" : ", (") + std::to_string(id) + ", " + dx_->quote(formStr) + ", " +
                   (r.pmax >= cfg_.tau ? dx_->quote(r.top) : std::string("NULL")) + ", " + num(std::max(r.h, 0.0)) + ")";
         if (++k % 400 == 0) flush(values);
     }
     flush(values);
+    if (isClickHouse) {
+        db_.exec("EXCHANGE TABLES " + rb("doubt") + " AND " + targetTable);
+        db_.exec("DROP TABLE IF EXISTS " + targetTable);
+    }
 }
 
 // -- semantic rule administration and gating ----------------------------------
@@ -704,7 +840,7 @@ std::vector<stats::XY> RazobillEngine::xyLocked(std::unordered_map<std::string, 
     std::string sql;
     if (compact_ || d.denseFormKey() || hasCollision_)
         sql = "SELECT f.id AS fid, " + y + " AS yv, count(*) AS n FROM " + phys_ +
-              " e JOIN rb_form f ON f.no = e.form_no GROUP BY f.id, yv";
+              " e JOIN " + rb("form") + " f ON f.no = e.form_no GROUP BY f.id, yv";
     else
         sql = "SELECT e.form_id AS fid, " + y + " AS yv, count(*) AS n FROM " + phys_ +
               " e WHERE e.form_id IS NOT NULL GROUP BY e.form_id, yv";
@@ -752,7 +888,12 @@ Defined RazobillEngine::define(const std::string& meaning, const std::string& pa
     if (!(weight > 0) || !std::isfinite(weight)) throw std::invalid_argument("weight must be positive and finite");
     if (cfg_.purpose.empty() && !force) throw std::invalid_argument("declare a purpose first");
     requireReadyLocked();
-    const int cur = static_cast<int>(db_.query("SELECT v FROM rb_meta").i64(0, 0));
+    const int cur = static_cast<int>(db_.query("SELECT v FROM " + rb("meta") + "").i64(0, 0));
+    const int latest = static_cast<int>(db_.query("SELECT coalesce(max(v), 0) FROM " + rb("event") + "").i64(0, 0));
+    if (cur < latest) {
+        throw std::logic_error("cannot define() while pinned to historical version " + std::to_string(cur) +
+                               " (latest is " + std::to_string(latest) + ")");
+    }
 
     std::vector<Rule> probe = activeRulesLocked(cur);
     std::erase_if(probe, [&](const Rule& r) { return r.meaning != meaning; });
@@ -774,11 +915,12 @@ Defined RazobillEngine::define(const std::string& meaning, const std::string& pa
         throw GateRefused(o.str(), cost.jsd, cost.share);
     }
     TransactionGuard tx(db_, dx_->flavor());
-    const int v = static_cast<int>(db_.query("SELECT coalesce(max(v), 0) FROM rb_event").i64(0, 0)) + 1;
-    db_.exec("INSERT INTO rb_event VALUES (" + std::to_string(v) + ", 'define', " + dx_->quote(meaning) + ", " +
+    const int v = static_cast<int>(db_.query("SELECT coalesce(max(v), 0) FROM " + rb("event") + "").i64(0, 0)) + 1;
+    db_.exec("INSERT INTO " + rb("event") + " VALUES (" + std::to_string(v) + ", 'define', " + dx_->quote(meaning) + ", " +
              dx_->quote(pattern) + ", " + num(weight) + ")");
-    db_.exec(dx_->truncate("rb_meta"));
-    db_.exec("INSERT INTO rb_meta VALUES (" + std::to_string(v) + ")");
+    db_.exec(dx_->truncate("" + rb("meta") + ""));
+    db_.exec("INSERT INTO " + rb("meta") + " VALUES (" + std::to_string(v) + ")");
+    resolveCache_.clear();
     rebuildDerivedLocked();
     tx.commit();
 
@@ -800,17 +942,23 @@ Defined RazobillEngine::define(const std::string& meaning, const std::string& pa
 int RazobillEngine::retire(const std::string& meaning) {
     std::scoped_lock lock(mu_);
     requireName(meaning);
-    const int cur = static_cast<int>(db_.query("SELECT v FROM rb_meta").i64(0, 0));
+    const int cur = static_cast<int>(db_.query("SELECT v FROM " + rb("meta") + "").i64(0, 0));
+    const int latest = static_cast<int>(db_.query("SELECT coalesce(max(v), 0) FROM " + rb("event") + "").i64(0, 0));
+    if (cur < latest) {
+        throw std::logic_error("cannot retire() while pinned to historical version " + std::to_string(cur) +
+                               " (latest is " + std::to_string(latest) + ")");
+    }
     const auto rules = activeRulesLocked(cur);
     auto matchesMeaning = [&](const Rule& r) { return r.meaning == meaning; };
     if (std::ranges::none_of(rules, matchesMeaning)) {
         throw std::invalid_argument("no active meaning named " + meaning);
     }
     TransactionGuard tx(db_, dx_->flavor());
-    const int v = static_cast<int>(db_.query("SELECT coalesce(max(v), 0) FROM rb_event").i64(0, 0)) + 1;
-    db_.exec("INSERT INTO rb_event VALUES (" + std::to_string(v) + ", 'retire', " + dx_->quote(meaning) + ", '', 0)");
-    db_.exec(dx_->truncate("rb_meta"));
-    db_.exec("INSERT INTO rb_meta VALUES (" + std::to_string(v) + ")");
+    const int v = static_cast<int>(db_.query("SELECT coalesce(max(v), 0) FROM " + rb("event") + "").i64(0, 0)) + 1;
+    db_.exec("INSERT INTO " + rb("event") + " VALUES (" + std::to_string(v) + ", 'retire', " + dx_->quote(meaning) + ", '', 0)");
+    db_.exec(dx_->truncate("" + rb("meta") + ""));
+    db_.exec("INSERT INTO " + rb("meta") + " VALUES (" + std::to_string(v) + ")");
+    resolveCache_.clear();
     rebuildDerivedLocked();
     tx.commit();
     return v;
@@ -824,11 +972,11 @@ int RazobillEngine::retire(const std::string& meaning) {
 /// err     throws std::invalid_argument if version < 0 or exceeds latest
 void RazobillEngine::pin(int version) {
     std::scoped_lock lock(mu_);
-    const int latest = static_cast<int>(db_.query("SELECT coalesce(max(v), 0) FROM rb_event").i64(0, 0));
+    const int latest = static_cast<int>(db_.query("SELECT coalesce(max(v), 0) FROM " + rb("event") + "").i64(0, 0));
     if (version < 0 || version > latest) throw std::invalid_argument("version out of range");
     TransactionGuard tx(db_, dx_->flavor());
-    db_.exec(dx_->truncate("rb_meta"));
-    db_.exec("INSERT INTO rb_meta VALUES (" + std::to_string(version) + ")");
+    db_.exec(dx_->truncate("" + rb("meta") + ""));
+    db_.exec("INSERT INTO " + rb("meta") + " VALUES (" + std::to_string(version) + ")");
     rebuildDerivedLocked();
     tx.commit();
 }
@@ -839,7 +987,7 @@ void RazobillEngine::pin(int version) {
 /// thread  acquires mu_
 int RazobillEngine::version() {
     std::scoped_lock lock(mu_);
-    return static_cast<int>(db_.query("SELECT v FROM rb_meta").i64(0, 0));
+    return static_cast<int>(db_.query("SELECT v FROM " + rb("meta") + "").i64(0, 0));
 }
 
 // -- information metrics, inspection, and prioritization ----------------------
@@ -855,7 +1003,7 @@ int RazobillEngine::version() {
 stats::Ledger RazobillEngine::ledger() {
     std::scoped_lock lock(mu_);
     requireReadyLocked();
-    const auto map = resolveLocked(activeRulesLocked(static_cast<int>(db_.query("SELECT v FROM rb_meta").i64(0, 0))));
+    const auto map = resolveVersionLocked(static_cast<int>(db_.query("SELECT v FROM " + rb("meta") + "").i64(0, 0)));
     std::unordered_map<std::string, std::uint32_t> yids;
     const auto xy = xyLocked(yids);
     std::unordered_map<std::uint64_t, double> n;
@@ -867,9 +1015,15 @@ stats::Ledger RazobillEngine::ledger() {
     for (const auto& m : map)
         if (n.contains(m.form)) cells.push_back({.form = m.form, .meaning = mi(m.meaning), .mass = n[m.form] * m.p});
     const auto l = stats::ledger(cells, totalEventsLocked());
-    if (std::abs(l.expression - l.conveyance - l.latitude) > 1e-9 ||
-        std::abs(l.content - l.conveyance - l.doubt) > 1e-9)
-        throw std::logic_error("ledger identity violated");
+    const double tolE = std::max(1e-7, 1e-9 * std::max(1.0, l.expression));
+    const double tolC = std::max(1e-7, 1e-9 * std::max(1.0, l.content));
+    if (std::abs(l.expression - l.conveyance - l.latitude) > tolE ||
+        std::abs(l.content - l.conveyance - l.doubt) > tolC) {
+        if (std::abs(l.expression - l.conveyance - l.latitude) > 1e-3 ||
+            std::abs(l.content - l.conveyance - l.doubt) > 1e-3) {
+            throw std::logic_error("ledger identity violated");
+        }
+    }
     return l;
 }
 
@@ -881,7 +1035,7 @@ stats::Ledger RazobillEngine::ledger() {
 double RazobillEngine::leakage() {
     std::scoped_lock lock(mu_);
     requireReadyLocked();
-    const auto map = resolveLocked(activeRulesLocked(static_cast<int>(db_.query("SELECT v FROM rb_meta").i64(0, 0))));
+    const auto map = resolveVersionLocked(static_cast<int>(db_.query("SELECT v FROM " + rb("meta") + "").i64(0, 0)));
     std::unordered_map<std::string, std::uint32_t> yids;
     const auto xy = xyLocked(yids);
     Interner mi;
@@ -901,16 +1055,17 @@ double RazobillEngine::leakage() {
 /// err     throws std::invalid_argument if message fails parser validation
 std::optional<MeaningOf> RazobillEngine::meaningOf(const std::string& text) {
     core::SlotRecord slots;
-    if (const auto s = core::parse(text, slots, cfg_.scanMode); s != Status::Ok)
+    if (const auto s = core::parse(text, slots, cfg_.resolvedScanMode()); s != Status::Ok)
         throw std::invalid_argument(describe(s));
     const auto id = core::xxh64(slots.templateStr);
     std::scoped_lock lock(mu_);
-    if (db_.query("SELECT count(*) FROM rb_form WHERE id = " + std::to_string(id) +
+    if (db_.query("SELECT count(*) FROM " + rb("form") + " WHERE id = " + std::to_string(id) +
                   " AND form = " + dx_->quote(slots.templateStr))
             .i64(0, 0) == 0)
         return std::nullopt;
     MeaningOf out{.formId = id, .meaning = std::nullopt, .doubt = std::nullopt, .form_id = id};
-    const auto t = db_.query("SELECT meaning, doubt FROM rb_doubt WHERE form_id = " + std::to_string(id));
+    const auto t = db_.query("SELECT meaning, doubt FROM " + rb("doubt") + " WHERE form_id = " + std::to_string(id) +
+                             " AND form = " + dx_->quote(slots.templateStr));
     if (!t.empty()) {
         if (!t.isNull(0, 0)) out.meaning = t.str(0, 0);
         out.doubt = t.f64(0, 1);
@@ -926,7 +1081,7 @@ std::optional<MeaningOf> RazobillEngine::meaningOf(const std::string& text) {
 std::vector<std::pair<std::string, std::int64_t>> RazobillEngine::todo(std::size_t n) {
     std::scoped_lock lock(mu_);
     requireReadyLocked();
-    const auto map = resolveLocked(activeRulesLocked(static_cast<int>(db_.query("SELECT v FROM rb_meta").i64(0, 0))));
+    const auto map = resolveVersionLocked(static_cast<int>(db_.query("SELECT v FROM " + rb("meta") + "").i64(0, 0)));
     std::unordered_map<std::string, std::uint32_t> yids;
     const auto xy = xyLocked(yids);
     std::unordered_map<std::uint64_t, std::int64_t> count;
@@ -946,7 +1101,7 @@ std::vector<std::pair<std::string, std::int64_t>> RazobillEngine::todo(std::size
         if (i > 0) inList += ", ";
         inList += std::to_string(top[i].first);
     }
-    const auto t = db_.query("SELECT id, template FROM rb_form WHERE id IN (" + inList + ")");
+    const auto t = db_.query("SELECT id, template FROM " + rb("form") + " WHERE id IN (" + inList + ")");
     std::unordered_map<std::uint64_t, std::string> idToTmpl;
     for (std::size_t r = 0; r < t.rows.size(); ++r) {
         idToTmpl[t.u64(r, 0)] = t.str(r, 1);

@@ -31,30 +31,54 @@ bool duckdbAvailable() {
     return avail;
 }
 
+std::string corpusPath() {
+    const char* env = std::getenv("RZB_CORPUS_PARQUET");
+    if (env && *env) return std::string(env);
+    std::error_code ec;
+    if (std::filesystem::exists("/tmp/corpus.parquet", ec)) return "/tmp/corpus.parquet";
+    auto tmp = std::filesystem::temp_directory_path(ec);
+    if (!ec) {
+        auto p = tmp / "corpus.parquet";
+        if (std::filesystem::exists(p, ec)) {
+            std::string s = p.string();
+            std::replace(s.begin(), s.end(), '\\', '/');
+            return s;
+        }
+    }
+    if (std::filesystem::exists("build/corpus.parquet", ec)) return "build/corpus.parquet";
+    if (std::filesystem::exists("corpus.parquet", ec)) return "corpus.parquet";
+    return "";
+}
+
 bool corpusAvailable() {
-    static const bool avail = [] {
-        std::error_code ec;
-        return std::filesystem::exists("/tmp/corpus.parquet", ec);
-    }();
-    return avail;
+    return !corpusPath().empty();
 }
 
 constexpr const char* kRules[][2] = {{"HDFS_RECEIVING", R"(^Receiving block <\*> src: )"},
                                      {"SSH_PASSWORD_FAIL", "^Failed password for"},
                                      {"LINUX_AUTH_FAIL", "^authentication failure"}};
+
+// A skipped integration test must never look like a passing one. With
+// RZB_REQUIRE_INTEGRATION=1 (set this in CI) a missing driver or corpus fails the run.
+bool skipIntegration(const char* why) {
+    if (const char* req = std::getenv("RZB_REQUIRE_INTEGRATION"); req != nullptr && req[0] != '\0' && req[0] != '0') {
+        FAIL("integration prerequisite missing and RZB_REQUIRE_INTEGRATION is set: ", why);
+    }
+    MESSAGE("SKIPPED (not passed): ", why);
+    return true;
+}
 std::unique_ptr<Backend> open() {
     return makeAdbcBackend(support::duckdbOptions());
 }
 void loadRaw(Backend& b, const char* name = "raw") {
-    b.exec(std::string("CREATE TABLE ") + name + " AS SELECT * FROM read_parquet('/tmp/corpus.parquet')");
+    b.exec(std::string("CREATE TABLE ") + name + " AS SELECT * FROM read_parquet('" + corpusPath() + "')");
 }
 } // namespace
 
 // pins exact reconstruction over 134,815 events and appendable re-compact
 TEST_CASE("compact mode: lossless, appendable, original columns restored") {
     if (!duckdbAvailable() || !corpusAvailable()) {
-        MESSAGE("Skipping DuckDB corpus test: DuckDB driver or /tmp/corpus.parquet not present");
-        return;
+        if (skipIntegration("DuckDB driver or /tmp/corpus.parquet (tools/MakeCorpus.py) not present")) return;
     }
     auto b = open();
     loadRaw(*b);
@@ -72,8 +96,7 @@ TEST_CASE("compact mode: lossless, appendable, original columns restored") {
 // pins byte-level round-trip over unicode, nulls, huge ints, and sentinels
 TEST_CASE("compact mode: adversarial rows survive") {
     if (!duckdbAvailable()) {
-        MESSAGE("Skipping DuckDB test: DuckDB driver not present");
-        return;
+        if (skipIntegration("DuckDB driver not present")) return;
     }
     // robustness test:
     // boundary conditions: unicode, large integers, and ASCII control bytes
@@ -94,8 +117,7 @@ TEST_CASE("compact mode: adversarial rows survive") {
 // pins bit-for-bit form key parity between DuckDB SQL functions and C++ core
 TEST_CASE("every stored form equals the C++ core's form (cross-implementation conformance)") {
     if (!duckdbAvailable() || !corpusAvailable()) {
-        MESSAGE("Skipping DuckDB corpus test: DuckDB driver or /tmp/corpus.parquet not present");
-        return;
+        if (skipIntegration("DuckDB driver or /tmp/corpus.parquet (tools/MakeCorpus.py) not present")) return;
     }
     auto b = open();
     loadRaw(*b);
@@ -110,7 +132,7 @@ TEST_CASE("every stored form equals the C++ core's form (cross-implementation co
         key = s.templateStr;
         coreForms.insert(key);
     }
-    const auto db = b->query("SELECT form, id FROM rb_form");
+    const auto db = b->query("SELECT form, id FROM logs_rb_form");
     std::set<std::string> dbForms;
     std::size_t badHash = 0;
     for (std::size_t r = 0; r < db.rows.size(); ++r) {
@@ -125,8 +147,7 @@ TEST_CASE("every stored form equals the C++ core's form (cross-implementation co
 // pins Theorem 1 ledger identities and JSD gate under DuckDB SQL execution
 TEST_CASE("meaning layer: gate, doubt, versions, ledger identities") {
     if (!duckdbAvailable() || !corpusAvailable()) {
-        MESSAGE("Skipping DuckDB corpus test: DuckDB driver or /tmp/corpus.parquet not present");
-        return;
+        if (skipIntegration("DuckDB driver or /tmp/corpus.parquet (tools/MakeCorpus.py) not present")) return;
     }
     auto b = open();
     loadRaw(*b);
@@ -177,8 +198,9 @@ TEST_CASE("meaning layer: gate, doubt, versions, ledger identities") {
     CHECK(m->meaning == std::optional<std::string>("SSH_PASSWORD_FAIL"));
     CHECK(!rz.meaningOf("a shape that was never registered 1 zzz qqq").has_value());
     const auto todo = rz.todo(3);
-    CHECK(todo.size() == 3);
+    REQUIRE(todo.size() == 3); // REQUIRE: indexing below is undefined behaviour on a short vector
     CHECK(todo[0].second >= todo[1].second);
+    CHECK(todo[1].second >= todo[2].second);
 
     support::result("duckdb.coverage", l.coverage);
     support::result("duckdb.C", l.content);
@@ -191,8 +213,7 @@ TEST_CASE("meaning layer: gate, doubt, versions, ledger identities") {
 // pins SQL injection immunity for malicious table names and regex patterns
 TEST_CASE("hardening: hostile identifiers and patterns never reach SQL unquoted") {
     if (!duckdbAvailable() || !corpusAvailable()) {
-        MESSAGE("Skipping DuckDB corpus test: DuckDB driver or /tmp/corpus.parquet not present");
-        return;
+        if (skipIntegration("DuckDB driver or /tmp/corpus.parquet (tools/MakeCorpus.py) not present")) return;
     }
     auto b = open();
     loadRaw(*b);
@@ -206,9 +227,9 @@ TEST_CASE("hardening: hostile identifiers and patterns never reach SQL unquoted"
     CHECK_THROWS_AS(rz.define("OK", "([unclosed"), std::invalid_argument);
     CHECK_THROWS_AS(rz.define("OK", "x", -1.0), std::invalid_argument);
     CHECK_THROWS_AS(rz.compact("raw; DROP TABLE raw"), std::invalid_argument);
-    const auto before = b->query("SELECT count(*) FROM rb_form").i64(0, 0);
-    CHECK_NOTHROW(rz.define("QUOTES", "'; DROP TABLE rb_form; --", 1.0, true));
-    CHECK(b->query("SELECT count(*) FROM rb_form").i64(0, 0) == before);
+    const auto before = b->query("SELECT count(*) FROM logs_rb_form").i64(0, 0);
+    CHECK_NOTHROW(rz.define("QUOTES", "'; DROP TABLE logs_rb_form; --", 1.0, true));
+    CHECK(b->query("SELECT count(*) FROM logs_rb_form").i64(0, 0) == before);
     CHECK(b->query("SELECT count(*) FROM raw").i64(0, 0) == 134815);
     RazobillEngine noPurpose(*b, {.table = "logs"});
     CHECK_THROWS_AS(noPurpose.define("X", "^a"), std::invalid_argument);
@@ -217,8 +238,7 @@ TEST_CASE("hardening: hostile identifiers and patterns never reach SQL unquoted"
 // pins concurrent read-write thread safety across shared engine instance
 TEST_CASE("one instance shared by many threads: calls serialize, results stay consistent") {
     if (!duckdbAvailable() || !corpusAvailable()) {
-        MESSAGE("Skipping DuckDB corpus test: DuckDB driver or /tmp/corpus.parquet not present");
-        return;
+        if (skipIntegration("DuckDB driver or /tmp/corpus.parquet (tools/MakeCorpus.py) not present")) return;
     }
     auto b = open();
     loadRaw(*b);
@@ -247,8 +267,7 @@ TEST_CASE("one instance shared by many threads: calls serialize, results stay co
 // pins additive mode ledger metrics and lossless round-trip on DuckDB
 TEST_CASE("additive mode on DuckDB") {
     if (!duckdbAvailable() || !corpusAvailable()) {
-        MESSAGE("Skipping DuckDB corpus test: DuckDB driver or /tmp/corpus.parquet not present");
-        return;
+        if (skipIntegration("DuckDB driver or /tmp/corpus.parquet (tools/MakeCorpus.py) not present")) return;
     }
     auto b = open();
     loadRaw(*b);
@@ -270,8 +289,7 @@ TEST_CASE("additive mode on DuckDB") {
 // pins persistence and seamless resume across process/instance restarts
 TEST_CASE("DuckDB: a new instance resumes over existing compact storage (restart)") {
     if (!duckdbAvailable() || !corpusAvailable()) {
-        MESSAGE("Skipping DuckDB corpus test: DuckDB driver or /tmp/corpus.parquet not present");
-        return;
+        if (skipIntegration("DuckDB driver or /tmp/corpus.parquet (tools/MakeCorpus.py) not present")) return;
     }
     auto b = open();
     loadRaw(*b);
@@ -297,8 +315,7 @@ TEST_CASE("DuckDB: a new instance resumes over existing compact storage (restart
 // pins dead token GC in string dictionary without breaking reconstruction
 TEST_CASE("dictionary garbage collection and compaction: purges dead strings and preserves lossless rebuild") {
     if (!duckdbAvailable()) {
-        MESSAGE("Skipping DuckDB test: DuckDB driver not present");
-        return;
+        if (skipIntegration("DuckDB driver not present")) return;
     }
     auto b = open();
     b->exec("CREATE TABLE ephem(id INTEGER, msg VARCHAR)");
@@ -308,7 +325,7 @@ TEST_CASE("dictionary garbage collection and compaction: purges dead strings and
     rz.compact("ephem");
     CHECK(rz.verify("ephem") == 0);
 
-    const auto beforeGc = b->query("SELECT count(*) FROM rb_str").i64(0, 0);
+    const auto beforeGc = b->query("SELECT count(*) FROM eph_rb_str").i64(0, 0);
     CHECK(beforeGc >= 3);
 
     b->exec("DELETE FROM eph_c WHERE id = 3");
@@ -319,8 +336,8 @@ TEST_CASE("dictionary garbage collection and compaction: purges dead strings and
     CHECK(stats.activeAfter < static_cast<std::size_t>(beforeGc));
 
     rz.compactDictionary();
-    const auto activeCount = b->query("SELECT count(*) FROM rb_str").i64(0, 0);
-    const auto maxId = b->query("SELECT coalesce(max(id), -1) FROM rb_str").i64(0, 0);
+    const auto activeCount = b->query("SELECT count(*) FROM eph_rb_str").i64(0, 0);
+    const auto maxId = b->query("SELECT coalesce(max(id), -1) FROM eph_rb_str").i64(0, 0);
     CHECK(maxId == activeCount - 1);
 
     CHECK(rz.verify("ephem_kept") == 0);
@@ -329,8 +346,7 @@ TEST_CASE("dictionary garbage collection and compaction: purges dead strings and
 // pins differential parity between native C++ UDFs and pure SQL regexes
 TEST_CASE("native functions equal the SQL regex specification (real logs + 60,000 random and adversarial messages)") {
     if (!duckdbAvailable() || !corpusAvailable()) {
-        MESSAGE("Skipping DuckDB corpus test: DuckDB driver or /tmp/corpus.parquet not present");
-        return;
+        if (skipIntegration("DuckDB driver or /tmp/corpus.parquet (tools/MakeCorpus.py) not present")) return;
     }
     auto b = open();
     b->exec("SET threads = 4");
@@ -437,8 +453,7 @@ TEST_CASE("native functions equal the SQL regex specification (real logs + 60,00
 // pins semantic mode variable collapsing and exact round-trip in DuckDB
 TEST_CASE("semantic form extraction in DuckDB: collapses text variables and round-trips exactly") {
     if (!duckdbAvailable()) {
-        MESSAGE("Skipping DuckDB test: DuckDB driver not present");
-        return;
+        if (skipIntegration("DuckDB driver not present")) return;
     }
     auto b = open();
     b->exec("CREATE TABLE ssh_sample(msg VARCHAR)");
@@ -462,8 +477,7 @@ TEST_CASE("semantic form extraction in DuckDB: collapses text variables and roun
 // pins RzSplit composite STRUCT decomposition in vectorized DuckDB queries
 TEST_CASE("composite struct decomposition in DuckDB SQL") {
     if (!duckdbAvailable()) {
-        MESSAGE("Skipping DuckDB test: DuckDB driver not present");
-        return;
+        if (skipIntegration("DuckDB driver not present")) return;
     }
     auto b = open();
     b->exec("CREATE TABLE decomp_test(msg VARCHAR)");
@@ -512,8 +526,7 @@ TEST_CASE("composite struct decomposition in DuckDB SQL") {
 // pins raw binary BLOB round-trip over invalid UTF-8 byte sequences
 TEST_CASE("binary BLOB support in DuckDB: exact round-trip over invalid UTF-8 byte payloads") {
     if (!duckdbAvailable()) {
-        MESSAGE("Skipping DuckDB test: DuckDB driver not present");
-        return;
+        if (skipIntegration("DuckDB driver not present")) return;
     }
     auto b = open();
     b->exec("CREATE TABLE bin_sample(raw_bin BLOB)");
@@ -531,8 +544,7 @@ TEST_CASE("binary BLOB support in DuckDB: exact round-trip over invalid UTF-8 by
 // pins transactional rollback atomicity and config table synchronization
 TEST_CASE("control plane: config synchronization, transactional atomicity and batch todo") {
     if (!duckdbAvailable()) {
-        MESSAGE("Skipping DuckDB test: DuckDB driver not present");
-        return;
+        if (skipIntegration("DuckDB driver not present")) return;
     }
     auto b = open();
     b->exec("CREATE TABLE ctrl_test(id INTEGER, log_msg VARCHAR, level VARCHAR)");
@@ -610,8 +622,7 @@ private:
 
 TEST_CASE("TransactionGuard: failure injection triggers rollback") {
     if (!duckdbAvailable()) {
-        MESSAGE("Skipping DuckDB test: DuckDB driver not present");
-        return;
+        if (skipIntegration("DuckDB driver not present")) return;
     }
     auto rawDb = open();
     rawDb->exec("CREATE TABLE fail_test(id INTEGER, msg VARCHAR, level VARCHAR)");
@@ -628,3 +639,196 @@ TEST_CASE("TransactionGuard: failure injection triggers rollback") {
         proxy->inner().query("SELECT count(*) FROM duckdb_views() WHERE view_name = 'fail_logs'").i64(0, 0);
     CHECK(viewCount == 0);
 }
+
+// -- regression: defects found by the 2026-10-25 audit -------------------------
+
+// rb_str / rb_layout / rb_form / rb_event / rb_meta / rb_doubt used to be global to the
+// database, so gcDictionary() on one table purged strings another table still referenced
+TEST_CASE("two tables on one connection are isolated: dictionary GC of one never damages the other") {
+    if (!duckdbAvailable() && skipIntegration("DuckDB driver not present")) return;
+    auto b = open();
+    b->exec("CREATE TABLE raw_a AS SELECT i AS id, 'login user alice from host' || i AS msg FROM range(1000) t(i)");
+    b->exec("CREATE TABLE raw_b AS SELECT i AS id, 'payment failed card visa order' || i || ' for customer zed' AS msg "
+            "FROM range(1000) t(i)");
+    RazobillEngine a(*b, {.table = "ta"});
+    RazobillEngine c(*b, {.table = "tb"});
+    CHECK(a.compact("raw_a") == 1000);
+    CHECK(c.compact("raw_b") == 1000);
+    const auto gc = a.gcDictionary();
+    CHECK(gc.purgedCount == 0);
+    CHECK(c.verify("raw_b") == 0);
+    CHECK(a.verify("raw_a") == 0);
+}
+
+// compact() used to flip phys_/view_/compact_/ready_ before its last steps could throw, so a
+// rolled-back compact() left an engine that believed in tables that did not exist
+TEST_CASE("a failed compact() leaves the engine exactly as it was") {
+    if (!duckdbAvailable() && skipIntegration("DuckDB driver not present")) return;
+    auto b = open();
+    b->exec("CREATE TABLE raw AS SELECT i AS id, 'login user alice from host' || i AS msg FROM range(100) t(i)");
+    b->exec("CREATE TABLE logs_m(x INTEGER)"); // a table where compact() must create the view logs_m
+    RazobillEngine e(*b, {.table = "logs"});
+    CHECK_THROWS(e.compact("raw"));
+    CHECK_THROWS_AS(e.verify("raw"), std::logic_error);
+    CHECK_THROWS_AS((void)e.ledger(), std::logic_error);
+    CHECK_THROWS_AS(e.gcDictionary(), std::logic_error);
+}
+
+// the staging table holds the whole decomposed batch and used to live until the connection closed
+TEST_CASE("compact() releases its staging table") {
+    if (!duckdbAvailable() && skipIntegration("DuckDB driver not present")) return;
+    auto b = open();
+    b->exec("CREATE TABLE raw AS SELECT i AS id, 'login user alice from host' || i AS msg FROM range(1000) t(i)");
+    RazobillEngine e(*b, {.table = "ta"});
+    CHECK(e.compact("raw") == 1000);
+    CHECK(b->query("SELECT count(*) FROM duckdb_tables() WHERE table_name LIKE '%rb_s'").i64(0, 0) == 0);
+}
+
+// catalog probes must not see same-named tables of other schemas or attached databases
+TEST_CASE("catalog detection is scoped to the current database and schema") {
+    if (!duckdbAvailable() && skipIntegration("DuckDB driver not present")) return;
+    auto b = open();
+    b->exec("ATTACH ':memory:' AS other");
+    b->exec("CREATE TABLE other.logs_c(x INTEGER)");
+    b->exec("CREATE TABLE raw AS SELECT i AS id, 'login user alice from host' || i AS msg FROM range(100) t(i)");
+    RazobillEngine e(*b, {.table = "logs"});
+    CHECK(e.compact("raw") == 100); // used to take the INSERT branch against a table that is not ours
+    CHECK(e.verify("raw") == 0);
+}
+
+// O1: calling compact() twice on identical source batch is idempotent
+TEST_CASE("compact() is idempotent on identical source batches") {
+    if (!duckdbAvailable() && skipIntegration("DuckDB driver not present")) return;
+    auto b = open();
+    b->exec("CREATE TABLE raw AS SELECT i AS id, 'event ' || i AS msg FROM range(200) t(i)");
+    RazobillEngine e(*b, {.table = "logs_idemp", .idempotent = true});
+    CHECK(e.compact("raw") == 200);
+    CHECK(e.verify("raw") == 0);
+    // second compact call must not duplicate rows
+    CHECK(e.compact("raw") == 200);
+    CHECK(e.verify("raw") == 0);
+    CHECK(b->query("SELECT count(*) FROM logs_idemp").i64(0, 0) == 200);
+}
+
+// O1: compact() with explicit token deduplicates identical client requests
+TEST_CASE("compact() with explicit idempotency token prevents duplicate insertion") {
+    if (!duckdbAvailable() && skipIntegration("DuckDB driver not present")) return;
+    auto b = open();
+    b->exec("CREATE TABLE raw AS SELECT i AS id, 'event ' || i AS msg FROM range(100) t(i)");
+    RazobillEngine e(*b, {.table = "logs_token"});
+    CHECK(e.compact("raw", "req-uuid-1") == 100);
+    CHECK(e.verify("raw") == 0);
+    // retry with same token
+    CHECK(e.compact("raw", "req-uuid-1") == 100);
+    CHECK(b->query("SELECT count(*) FROM logs_token").i64(0, 0) == 100);
+}
+
+// O2: form hash collision semantic isolation
+TEST_CASE("semantic layer isolates doubt and meaning per form and form_id") {
+    if (!duckdbAvailable() && skipIntegration("DuckDB driver not present")) return;
+    auto b = open();
+    b->exec("CREATE TABLE raw AS SELECT 1 AS id, 'disk read failure on dev0' AS msg, 'ERR' AS lvl "
+            "UNION ALL SELECT 2, 'disk write failure on dev1', 'ERR' "
+            "UNION ALL SELECT 3, 'user login alice success', 'INFO'");
+    RazobillEngine e(*b, {.table = "logs_sem", .purpose = "lvl"});
+    e.compact("raw");
+    e.define("DISK_ERR", "^disk .* failure", 1.0, true);
+    e.define("AUTH_INFO", "^user ", 1.0, true);
+    const auto m1 = e.meaningOf("disk read failure on dev0");
+    const auto m2 = e.meaningOf("user login alice success");
+    REQUIRE(m1.has_value());
+    REQUIRE(m2.has_value());
+    CHECK(m1->meaning.value_or("") == "DISK_ERR");
+    CHECK(m2->meaning.value_or("") == "AUTH_INFO");
+}
+
+// O3: define() and retire() are rejected while pinned to historical version
+TEST_CASE("define() and retire() are rejected while pinned to historical version") {
+    if (!duckdbAvailable() && skipIntegration("DuckDB driver not present")) return;
+    auto b = open();
+    b->exec("CREATE TABLE raw AS SELECT i AS id, 'event message ' || i AS msg, 'WARN' AS lvl FROM range(20) t(i)");
+    RazobillEngine e(*b, {.table = "logs_pin", .purpose = "lvl"});
+    e.compact("raw");
+    e.define("RULE_A", ".*", 1.0, true);
+    e.define("RULE_B", ".*", 1.0, true);
+    CHECK(e.version() == 2);
+    e.pin(1);
+    CHECK(e.version() == 1);
+    // must reject define and retire while pinned
+    CHECK_THROWS_AS(e.define("RULE_C", ".*", 1.0, true), std::logic_error);
+    CHECK_THROWS_AS(e.retire("RULE_A"), std::logic_error);
+    // unpin back to latest version allows operations
+    e.pin(2);
+    CHECK(e.version() == 2);
+}
+
+// Control-plane concurrency stress test: two threads, two engines, one connection
+TEST_CASE("control plane concurrency: two threads, two engines, one connection") {
+    if (!duckdbAvailable() && skipIntegration("DuckDB driver not present")) return;
+    auto b = open();
+    b->exec("CREATE TABLE conc_raw AS SELECT i AS id, 'system task ' || (i % 5) || ' status ok' AS msg, "
+            "CASE WHEN i % 2 = 0 THEN 'INFO' ELSE 'WARN' END AS lvl FROM range(100) t(i)");
+
+    Config cfg1{.table = "conc_logs_1", .purpose = "lvl", .idempotent = true};
+    Config cfg2{.table = "conc_logs_2", .purpose = "lvl", .idempotent = true};
+    RazobillEngine e1(*b, cfg1);
+    RazobillEngine e2(*b, cfg2);
+
+    e1.compact("conc_raw", "init-tok-1");
+    e2.compact("conc_raw", "init-tok-2");
+
+    std::atomic<bool> start{false};
+    std::atomic<int> errorsA{0};
+    std::atomic<int> errorsB{0};
+    constexpr int kIterations = 100;
+
+    std::thread t1([&]() {
+        while (!start.load(std::memory_order_acquire)) {}
+        for (int i = 0; i < kIterations; ++i) {
+            try {
+                // repeated compaction with same token tests idempotent dedup concurrency
+                auto cnt = e1.compact("conc_raw", "init-tok-1");
+                if (cnt != 100) errorsA.fetch_add(1);
+                e1.define("RULE_T1_" + std::to_string(i % 5), "^system task [0-9] status", 1.0, true);
+                auto m = e1.meaningOf("system task 1 status ok");
+                (void)m;
+                if (i % 3 == 0) {
+                    e1.retire("RULE_T1_" + std::to_string(i % 5));
+                }
+            } catch (const std::exception&) {
+                errorsA.fetch_add(1);
+            }
+        }
+    });
+
+    std::thread t2([&]() {
+        while (!start.load(std::memory_order_acquire)) {}
+        for (int i = 0; i < kIterations; ++i) {
+            try {
+                // repeated compaction with same token tests idempotent dedup concurrency
+                auto cnt = e2.compact("conc_raw", "init-tok-2");
+                if (cnt != 100) errorsB.fetch_add(1);
+                e2.define("RULE_T2_" + std::to_string(i % 5), "^system task .* ok", 1.0, true);
+                auto m = e2.meaningOf("system task 2 status ok");
+                (void)m;
+                (void)e2.ledger();
+                if (i % 4 == 0) {
+                    e2.retire("RULE_T2_" + std::to_string(i % 5));
+                }
+            } catch (const std::exception&) {
+                errorsB.fetch_add(1);
+            }
+        }
+    });
+
+    start.store(true, std::memory_order_release);
+    t1.join();
+    t2.join();
+
+    CHECK(errorsA.load() == 0);
+    CHECK(errorsB.load() == 0);
+    CHECK(e1.verify("conc_raw") == 0);
+    CHECK(e2.verify("conc_raw") == 0);
+}
+
+

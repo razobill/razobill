@@ -66,6 +66,11 @@ public:
     [[nodiscard]] virtual Flavor flavor() const noexcept = 0;
     virtual void exec(std::string_view sql) = 0;
     [[nodiscard]] virtual Table query(std::string_view sql) = 0;
+
+    /// thread: locks the backend connection across a multi-statement transaction
+    virtual void lock() {}
+    /// thread: unlocks the backend connection upon transaction completion
+    virtual void unlock() {}
 };
 
 /// configuration struct for loading and initializing ADBC driver connections

@@ -8,6 +8,9 @@
 
 name: Continuous Integration
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: ["main"]
@@ -45,10 +48,10 @@ jobs:
 
     steps:
       - name: Checkout Source Tree
-        uses: actions/checkout@v7
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
         with:
           python-version: ${{ matrix.python-version }}
           cache: "pip"
@@ -59,7 +62,7 @@ jobs:
 
       - name: Set up MSVC Compiler
         if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb9727c6 # v1.13.0
 
       - name: Configure CMake
         run: |
@@ -96,10 +99,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Source Tree
-        uses: actions/checkout@v7
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
         with:
           python-version: "3.12"
 
@@ -143,7 +146,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Source Tree
-        uses: actions/checkout@v7
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Install Dependencies
         run: |
@@ -164,7 +167,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Source Tree
-        uses: actions/checkout@v7
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Verify C ABI Contract Version
         run: |
@@ -181,10 +184,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Source Tree
-        uses: actions/checkout@v7
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@f111f3307d8850f501ac008e886eec1fd1932a34 # v5.3.0
         with:
           go-version-file: ext/otel/go.mod
           cache-dependency-path: ext/otel/go.sum
@@ -204,10 +207,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Source Tree
-        uses: actions/checkout@v7
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Set up Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
 
       - name: Build C++ Universal C ABI Shared Library
         run: |
@@ -224,10 +227,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Source Tree
-        uses: actions/checkout@v7
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
         with:
           node-version: "20"
 
@@ -236,7 +239,7 @@ jobs:
           npx --yes markdownlint-cli2 "**/*.md"
 
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
         with:
           python-version: "3.12"
 
@@ -262,11 +265,11 @@ jobs:
         os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, macos-latest]
     steps:
       - name: Checkout Source Tree
-        uses: actions/checkout@v7
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Set up MSVC Compiler
         if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb9727c6 # v1.13.0
 
       - name: Configure CMake
         run: |
@@ -279,16 +282,18 @@ jobs:
       - name: Execute BenchCore (Receipts Only, No Gating)
         shell: bash
         run: |
-          if [ -f "logs/SSH/SSH.log" ]; then
-            if [ -f "./build/BenchCore" ]; then
-              ./build/BenchCore logs/SSH/SSH.log 50000
-            elif [ -f "./build/BenchCore.exe" ]; then
-              ./build/BenchCore.exe logs/SSH/SSH.log 50000
-            elif [ -f "./build/Release/BenchCore.exe" ]; then
-              ./build/Release/BenchCore.exe logs/SSH/SSH.log 50000
-            fi
-          else
-            echo "Skipping bench: logs/SSH/SSH.log dataset not bundled in checkout"
+          BENCH_BIN="./build/BenchCore"
+          if [ -f "./build/BenchCore.exe" ]; then
+            BENCH_BIN="./build/BenchCore.exe"
+          elif [ -f "./build/Release/BenchCore.exe" ]; then
+            BENCH_BIN="./build/Release/BenchCore.exe"
+          fi
+          if [ -f "build/corpus.txt" ]; then
+            $BENCH_BIN build/corpus.txt 50000
+          elif [ -f "tests/ConformanceCorpus.txt" ]; then
+            $BENCH_BIN tests/ConformanceCorpus.txt 50000
+          elif [ -f "logs/SSH/SSH.log" ]; then
+            $BENCH_BIN logs/SSH/SSH.log 50000
           fi
 
   test-mingw:
@@ -296,10 +301,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout Source Tree
-        uses: actions/checkout@v7
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Set up MSYS2 MinGW-w64
-        uses: msys2/setup-msys2@v2
+        uses: msys2/setup-msys2@d4444d52cfd403e93bd20009e343224b6b699c73 # v2.26.0
         with:
           msystem: UCRT64
           update: true

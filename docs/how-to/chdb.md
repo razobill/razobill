@@ -158,3 +158,12 @@ Install the python package `pip install chdb` or build `libchdb` from source if 
 - [Compacting logs in DuckDB](duckdb.md): relational struct parsing and lossless reconstruction.
 - [Python developer guide](python.md): batch log parsing with `pyrazobill`.
 - [Lossless invertibility](../explanation/lossless-invertibility.md): theoretical foundations.
+
+## Template parity with DuckDB and Python
+
+Only the hash is shared bit for bit. ClickHouse has no native scanner, so its form expression is generated SQL that
+implements `ScanMode::Exact` (a token is a variable when it contains a digit; an integer token must fit `int64`;
+literal braces in constant text are written `{{` and `}}`). The DuckDB extension and Python default to
+`ScanMode::Semantic`, which also treats the value after keywords such as `user` or `for` as a variable. For the same
+log line the two engines can therefore produce different templates and different `form_id` values. Use
+`ScanMode::Exact` everywhere if template identity across engines matters.

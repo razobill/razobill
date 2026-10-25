@@ -55,14 +55,17 @@ Razobill strictly separates high-frequency data plane execution from control pla
 
 ## Memory management architecture
 
+> [!NOTE]
+> `MemoryArena` and `StringPool` serve as internal, cache-aligned data structures for native benchmark harnesses and standalone testing. Production table compaction utilizes database-native columnar dictionary tables and vector list allocations.
+
 ### 1. Monotonic memory arena (`MemoryArena.hpp`)
 
-- Provides cache-line aligned (64-byte) bump allocation.
+- Provides cache-line aligned (64-byte) bump allocation for standalone benchmark runs.
 - When an arena is reset, backing memory blocks are retained on an internal freelist rather than released to the operating system, eliminating system call overhead across billions of calls.
 
 ### 2. Compact string pool (`StringPool.hpp`)
 
-- Replaces standard heap-allocated string objects (`std::string`) with heterogeneous `std::string_view` lookup.
+- Replaces standard heap-allocated string objects (`std::string`) with heterogeneous `std::string_view` lookup for benchmark harnesses.
 - Employs generational mark-and-sweep garbage collection for long-running aggregators.
 
 ### 3. Thread-local scratchpad
@@ -102,7 +105,7 @@ Razobill models log generation through an information-theoretic framework descri
 
 $$P = \left\lceil \sum_{i=1}^N \max_x (-\log_2 Q(x \mid w_i)) \right\rceil + s + 1 \text{ bits}$$
 
-The implementation in `include/librazobill/Channel.hpp` realizes this channel over IEEE 754 64-bit floating point intervals (53 bits of mantissa). When required precision $P$ exceeds mantissa precision, interval arithmetic underflow is safely caught, returning `success = false` rather than corrupting telemetry data.
+The implementation in `include/librazobill/Channel.hpp` realizes this channel over IEEE 754 64-bit floating point intervals (53 bits of mantissa). It operates as an internal research component and theoretical proof harness, separate from the primary database ingestion and analytical query path. When required precision $P$ exceeds mantissa precision, interval arithmetic underflow is safely caught, returning `success = false` rather than corrupting telemetry data.
 
 ---
 

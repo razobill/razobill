@@ -7,6 +7,9 @@
 
 name: Documentation Lint
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main, docs/identity-refactor]
@@ -29,10 +32,10 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
         with:
           python-version: '3.11'
 

@@ -125,6 +125,9 @@ Data-plane operations return `Status` directly rather than throwing C++ exceptio
 
 ### MemoryArena
 
+> [!NOTE]
+> **Internal / Benchmark Component**: `MemoryArena` is retained for standalone benchmark comparisons and internal test harnesses; it is not on the primary DuckDB extension or C ABI production ingestion path.
+
 Monotonic bump allocator aligned to 64-byte CPU cache lines (`include/librazobill/MemoryArena.hpp`).
 Allows batch operations to allocate scratch memory without heap fragmentation:
 
@@ -132,6 +135,9 @@ Allows batch operations to allocate scratch memory without heap fragmentation:
 - `void reset() noexcept`: Resets the bump pointer to zero without releasing underlying virtual memory blocks.
 
 ### StringPool
+
+> [!NOTE]
+> **Internal / Benchmark Component**: `StringPool` provides generational mark-and-sweep string interning for standalone test harnesses; production table compaction utilizes database-native dictionary tables.
 
 Thread-safe string interning pool with generational mark-and-sweep garbage collection (`include/librazobill/StringPool.hpp`):
 
@@ -178,6 +184,9 @@ Engine-specific SQL dialect generation (`include/librazobill/Dialect.hpp`):
 
 ### FormCatalog
 
+> [!NOTE]
+> **Internal / Research Component**: `FormCatalog` provides an in-memory template registry for native microbenchmarks; production database compaction manages template registration in SQL catalog tables.
+
 Thread-safe registry mapping template strings to dense 32-bit IDs with full string comparison on hash collisions (`include/librazobill/FormCatalog.hpp`):
 
 - `std::uint32_t registerForm(std::string_view templateStr)`: Registers a template and returns a unique sequential ID.
@@ -195,6 +204,9 @@ Ledger metrics and conservation identities (`include/librazobill/Stats.hpp`):
 - Conservation laws: $E = I(X; W) + \Lambda$ and $C = I(X; W) + \Delta$.
 
 ### Steganographic channel
+
+> [!NOTE]
+> **Theoretical Proof Realization**: `Channel` realizes the covert provenance and steganographic channel of Theorem 8; it is an experimental C++ research API and not exposed via the universal C ABI or SQL scalar functions.
 
 Provenance encoding and decoding over synonymous template forms (`include/librazobill/Channel.hpp`):
 

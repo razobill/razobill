@@ -207,8 +207,10 @@ struct DepthLedger {
 [[nodiscard]] ConsequenceDecomposition consequenceDecomposition(std::span<const XY> xy,
                                                                 std::span<const FormMeaning> map);
 
-/// volume-weighted Jensen-Shannon divergence of purpose distribution across
-/// merged template forms
+/// volume-weighted conditional mutual information / information leakage I(X; Y | W)
+/// of purpose distribution across merged template forms.
+/// \note Field named `jsd` for universal C++ ABI stability; mathematically represents
+/// the volume-weighted conditional KL divergence (leakage) I(X; Y | W) in bits per merged event.
 struct MergeCost {
     double jsd;
     double share;

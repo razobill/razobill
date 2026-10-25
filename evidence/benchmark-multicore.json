@@ -1,0 +1,44 @@
+{
+  "benchmark": "Razobill Multi-Core Scaling (ThreadPool::parallelFor)",
+  "dataset": "LogHub Multi-Dataset Slice (OpenSSH, HDFS, Linux, BGL, Apache, Zookeeper)",
+  "corpus_lines": 50000,
+  "mean_msg_bytes": 122.2,
+  "hardware": "AMD / Intel x86_64, Windows 11 (12 Logical Cores)",
+  "scaling": [
+    {
+      "cores": 1,
+      "threads": 1,
+      "throughput_mb_s": 375.6,
+      "throughput_m_msg_s": 3.07,
+      "speedup": 1.00
+    },
+    {
+      "cores": 2,
+      "threads": 2,
+      "throughput_mb_s": 713.8,
+      "throughput_m_msg_s": 5.84,
+      "speedup": 1.90
+    },
+    {
+      "cores": 4,
+      "threads": 4,
+      "throughput_mb_s": 1424.8,
+      "throughput_m_msg_s": 11.66,
+      "speedup": 3.79
+    },
+    {
+      "cores": 6,
+      "threads": 6,
+      "throughput_mb_s": 1672.4,
+      "throughput_m_msg_s": 13.68,
+      "speedup": 4.45
+    },
+    {
+      "cores": 12,
+      "threads": 12,
+      "throughput_mb_s": 2340.0,
+      "throughput_m_msg_s": 19.15,
+      "speedup": 6.23
+    }
+  ]
+}

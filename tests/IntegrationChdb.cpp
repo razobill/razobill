@@ -65,7 +65,7 @@ TEST_CASE("chDB: additive mode, forms computed by ClickHouse SQL equal the C++ c
         bad += core::xxh64(key) != rows.u64(r, 1);
     }
     CHECK(bad == 0);
-    const auto db = b->query("SELECT form FROM rb_form");
+    const auto db = b->query("SELECT form FROM raw_rb_form");
     std::set<std::string> dbForms;
     for (std::size_t r = 0; r < db.rows.size(); ++r)
         dbForms.insert(db.str(r, 0));

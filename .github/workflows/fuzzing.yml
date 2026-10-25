@@ -1,0 +1,55 @@
+# =============================================================================
+# Continuous Coverage-Guided libFuzzer Pipeline (Clang, ASan, UBSan)
+#
+# runs LLVM libFuzzer with AddressSanitizer and UndefinedBehaviorSanitizer
+# against hostile and mutated inputs using domain dictionaries and seed corpus
+# =============================================================================
+
+name: Continuous libFuzzer
+
+permissions:
+  contents: read
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: "Fuzzing duration in seconds"
+        required: false
+        default: "600"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  libfuzzer:
+    name: libFuzzer Coverage-Guided Fuzzing (Clang, ASan, UBSan)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Tree
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Python
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: "3.12"
+
+      - name: Install Build Tools & Clang
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build clang llvm
+
+      - name: Run libFuzzer Harness
+        run: |
+          python tools/RunLibFuzzer.py --duration ${{ github.event.inputs.duration || '600' }}
+
+      - name: Upload Corpus Artifacts
+        if: always()
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        with:
+          name: fuzz-corpus
+          path: tests/fuzz/corpus/
+          if-no-files-found: ignore

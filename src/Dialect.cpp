@@ -16,8 +16,8 @@ namespace {
 
 // Token pattern matching any sequence containing at least one decimal digit
 constexpr std::string_view kTokenRegex = R"([^\s=,;:()\[\]{}"'<>|/]*[0-9][^\s=,;:()\[\]{}"'<>|/]*)";
-// integer pattern matching 0 or positive integers up to 18 digits
-constexpr std::string_view kIntRegex = "^(0|[1-9][0-9]{0,17})$";
+// integer pattern: 0 or a positive integer of up to 19 digits (the int64 range is checked separately)
+constexpr std::string_view kIntRegex = "^(0|[1-9][0-9]{0,18})$";
 constexpr unsigned char kControlReserved17 = 0x11;
 
 // -- duckdb dialect implementation --------------------------------------------
@@ -127,9 +127,11 @@ public:
         const std::string c(col);
         const std::string tok = quote(kTokenRegex);
         const std::string ints = quote(kIntRegex);
-        return "arrayStringConcat(arrayZipWith((sep, repl) -> concat(sep, repl), splitByRegexp(" + tok + ", " + c +
-               "), arrayPushBack(arrayMap(t -> if(match(t, " + ints + "), '{i}', '{s}'), extractAll(" + c + ", " + tok +
-               ")), '')))";
+        // arrayMap over two aligned arrays (gaps, placeholders); gaps escape literal braces as {{ }} and an
+        // integer token must also fit int64, exactly as the C++ scanner decides (ScanMode::Exact)
+        return "arrayStringConcat(arrayMap((sep, repl) -> concat(replaceAll(replaceAll(sep, '{', '{{'), '}', '}}'), repl), "
+               "splitByRegexp(" + tok + ", " + c + "), arrayPushBack(arrayMap(t -> if(match(t, " + ints +
+               ") AND toInt64OrNull(t) IS NOT NULL, '{i}', '{s}'), extractAll(" + c + ", " + tok + ")), '')))";
     }
 
     /// maps to native xxHash64 built-in function

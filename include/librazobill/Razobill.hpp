@@ -12,6 +12,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -33,10 +34,23 @@ struct Config {
     double tau = 1.0;    // confidence threshold for meaning resolution
     double eps = 0.05;   // information gate loss threshold in bits per event
     core::ScanMode scanMode = core::ScanMode::Semantic;
+    bool idempotent = false; // enable automatic content-hash deduplication on compact()
 
-    // Backward compatibility mappings
+    // Backward compatibility mappings (deprecated in favor of camelCase fields)
     std::string message_column;
     core::ScanMode scan_mode = core::ScanMode::Semantic;
+
+    /// resolves effective message column with symmetric precedence
+    [[nodiscard]] std::string resolvedMessageColumn() const {
+        if (!message_column.empty() && message_column != "msg") return message_column;
+        return messageColumn;
+    }
+
+    /// resolves effective scan mode with symmetric precedence
+    [[nodiscard]] core::ScanMode resolvedScanMode() const {
+        if (scan_mode != core::ScanMode::Semantic) return scan_mode;
+        return scanMode;
+    }
 };
 
 /// exception raised when an information gate merge exceeds epsilon loss bound
@@ -50,7 +64,9 @@ struct GateRefused : std::runtime_error {
 struct Defined {
     int version = 0;
     std::size_t forms = 0;
+    /// information loss in bits per merged event about purpose: I(X; Y | W)
     double lossPerMergedEvent = 0.0;
+    /// average bits of information loss per event across the whole table (lossPerMergedEvent * share)
     double lossTableWide = 0.0;
 
     // Backward compatibility mappings
@@ -98,10 +114,10 @@ public:
     std::size_t refresh();
 
     /// compact raw source table into columnar compact storage schema
-    /// in: src raw table name
+    /// in: src raw table name, optional idempotency token for client retries (§3.5)
     /// out: total count of log events compacted
     /// thread: thread-safe, acquires internal mutex
-    std::uint64_t compact(const std::string& src);
+    std::uint64_t compact(const std::string& src, const std::string& token = "");
 
     /// verify that compact reconstruction view matches source table byte
     /// for byte
@@ -185,17 +201,22 @@ private:
         double weight;
     };
     struct FormP {
-        std::uint64_t form;
+        std::uint64_t form = 0; // 64-bit form id (xxHash64)
+        std::string formStr;    // exact literal template string
         std::string meaning;
-        double p;
+        double p = 0.0;
     };
 
     void installLocked();
     void detectLocked();
+    [[nodiscard]] bool legacyStorageLocked() const;
+    /// per-table catalog name: <table>_rb_<base>, or legacy global rb_<base>
+    [[nodiscard]] std::string rb(std::string_view base) const { return prefix_ + "rb_" + std::string(base); }
     void requireReadyLocked() const;
     std::size_t registerFormsLocked(const std::string& selectForms);
     std::vector<Rule> activeRulesLocked(int version);
     std::vector<FormP> resolveLocked(const std::vector<Rule>& rules);
+    std::vector<FormP> resolveVersionLocked(int version);
     void rebuildDerivedLocked();
     void createViewsLocked();
     std::vector<stats::XY> xyLocked(std::unordered_map<std::string, std::uint32_t>& yids);
@@ -206,11 +227,13 @@ private:
     Config cfg_;
     std::unique_ptr<Dialect> dx_;
     std::mutex mu_;
+    std::string prefix_;
     std::string phys_;
     std::string view_;
     bool compact_ = false;
     bool hasCollision_ = false;
     bool ready_ = false;
+    std::unordered_map<int, std::vector<FormP>> resolveCache_;
 };
 
 using Razobill = RazobillEngine;

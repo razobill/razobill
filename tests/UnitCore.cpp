@@ -409,6 +409,19 @@ TEST_CASE("ThreadPool: parallelFor exception safety and worker settlement") {
     CHECK(nextTasks.load() == 50);
 }
 
+// pins thread pool reentrancy protection: calling parallelFor from within a worker thread runs sequentially
+TEST_CASE("ThreadPool: reentrant parallelFor from within pool worker executes without deadlock") {
+    razobill::core::ThreadPool pool(4);
+    std::atomic<int> nestedSum{0};
+    pool.parallelFor(20, 5, [&](std::size_t start, std::size_t end) {
+        // inside worker thread, invoke nested parallelFor
+        pool.parallelFor(end - start, 2, [&](std::size_t subStart, std::size_t subEnd) {
+            nestedSum.fetch_add(static_cast<int>(subEnd - subStart));
+        });
+    });
+    CHECK(nestedSum.load() == 20);
+}
+
 // pins SQL string quoting, NUL byte escaping, and template expressions
 TEST_CASE("Dialect: quoting and SQL expression generation (DuckDB & ClickHouse)") {
     auto duck = makeDialect(Flavor::DuckDB);

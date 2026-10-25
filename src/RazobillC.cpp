@@ -140,7 +140,7 @@ RZ_API RzStatus RzSplit(const char* message, size_t messageLength, RzRecord* out
         const razobill::Status status =
             razobill::core::parse(msgView, internal->slots, razobill::core::ScanMode::Semantic);
         if (status != razobill::Status::Ok) {
-            outRecord->internalHandle = internal.release();
+            std::memset(outRecord, 0, sizeof(RzRecord));
             if (status == razobill::Status::TooLarge) return RZ_ERR_MESSAGE_TOO_LARGE;
             if (status == razobill::Status::Malformed) return RZ_ERR_MALFORMED_TEMPLATE;
             return RZ_ERR_INVALID_ARGUMENT;
@@ -165,10 +165,10 @@ RZ_API RzStatus RzSplit(const char* message, size_t messageLength, RzRecord* out
 
         return RZ_OK;
     } catch (const std::bad_alloc&) {
-        outRecord->internalHandle = internal.release();
+        std::memset(outRecord, 0, sizeof(RzRecord));
         return RZ_ERR_OUT_OF_MEMORY;
     } catch (...) {
-        outRecord->internalHandle = internal.release();
+        std::memset(outRecord, 0, sizeof(RzRecord));
         return RZ_ERR_INTERNAL;
     }
 }
@@ -221,7 +221,6 @@ RZ_API RzStatus RzJoin(const RzRecord* record, char* outBuffer, size_t bufferCap
         const razobill::Status status =
             razobill::core::reconstruct(tmplView, intSpan, scratch.strViews, scratch.result);
         if (status != razobill::Status::Ok) {
-            scratch.trim();
             if (status == razobill::Status::SlotUnderflow || status == razobill::Status::SlotOverflow)
                 return RZ_ERR_COUNT_MISMATCH;
             if (status == razobill::Status::Malformed) return RZ_ERR_MALFORMED_TEMPLATE;
@@ -233,17 +232,14 @@ RZ_API RzStatus RzJoin(const RzRecord* record, char* outBuffer, size_t bufferCap
         if (outLength) *outLength = reqLen;
 
         if (reqLen == 0) {
-            scratch.trim();
             return RZ_OK;
         }
 
         if (!outBuffer || bufferCapacity < reqLen) {
-            scratch.trim();
             return RZ_ERR_BUFFER_TOO_SMALL;
         }
 
         std::memcpy(outBuffer, scratch.result.data(), reqLen);
-        scratch.trim();
         return RZ_OK;
     } catch (const std::bad_alloc&) {
         return RZ_ERR_OUT_OF_MEMORY;
@@ -283,17 +279,14 @@ RZ_API RzStatus RzTemplate(const char* message, size_t messageLength, char* outB
         if (outLength) *outLength = reqLen;
 
         if (reqLen == 0) {
-            scratch.trim();
             return RZ_OK;
         }
 
         if (!outBuffer || bufferCapacity < reqLen) {
-            scratch.trim();
             return RZ_ERR_BUFFER_TOO_SMALL;
         }
 
         std::memcpy(outBuffer, scratch.slots.templateStr.data(), reqLen);
-        scratch.trim();
         return RZ_OK;
     } catch (const std::bad_alloc&) {
         return RZ_ERR_OUT_OF_MEMORY;

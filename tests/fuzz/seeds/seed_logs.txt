@@ -1,0 +1,16 @@
+Failed password for admin from 10.0.0.1 port 5432 ssh2
+Receiving block blk_-1073741829 src: /10.250.19.102:54106 dest: /10.250.19.102:50010
+User admin logged in from 192.168.1.1 port 8080
+127.0.0.1 - - [10/Oct/2026:13:55:36 +0000] "GET /api/v1/health HTTP/1.1" 200 2326
+pam_unix(sshd:session): session opened for user alice by (uid=0)
+authentication failure; logname= uid=0 euid=0 tty=NODEVssh ruser= rhost=10.0.0.1 user=root
+Connection closed by 10.0.0.7 port 2222 [preauth]
+Received disconnect from 10.0.0.9: 11: Bye Bye
+CEF:0|Security|ThreatManager|1.0|100|Exploit Attempt|8|src=192.168.1.1 dst=10.0.0.1
+<134>1 2026-10-25T22:00:00.000Z myhost myproc 1234 ID47 [exampleSDID@32473 iut="3" eventSource="Application"] An application event log
+007 0 00 -5 1.5 1e5
+9223372036854775807 1234567890123456789
+Pathological \x11\x12 delimiter in payload \x11\x13 test
+Multi-byte Unicode emoji: 🚀✨🔥 with numbers 12345
+Template with {{escaped}} braces and {raw} placeholders 100
+it's a "quoted" 1 and 'single' 2

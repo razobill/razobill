@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **Per-table catalog namespaces (data loss)**: `rb_form`, `rb_str`, `rb_layout`, `rb_event`, `rb_meta` and `rb_doubt`
+  were global to the database, so `gcDictionary()` on one table purged dictionary strings that other compacted tables
+  still referenced, making them unreadable. Each engine now owns `<table>_rb_*`. Storage written by earlier versions
+  (global `rb_*`) is detected and adopted unchanged; it keeps the old isolation limits until migrated.
+- **`compact()` exception safety**: a rolled-back `compact()` left the engine believing in tables that did not exist.
+  In-memory state is now restored on any failure.
+- **`compact()` resource leak**: the temporary staging table held the entire decomposed batch until the connection
+  closed. It is now dropped with the commit.
+- **Catalog probes scoped**: `duckdb_tables()` and `duckdb_columns()` lookups now filter by current database and schema.
+- **ClickHouse form expression**: used `arrayZipWith`, which does not exist in ClickHouse, so `refresh()` failed on every
+  ClickHouse version. It now uses `arrayMap`, escapes literal braces like the C++ scanner, and applies the same
+  19-digit / `int64` integer rule. Verified identical to `ScanMode::Exact` on 6,000 random messages.
+- **Tests**: integration tests that silently passed when the driver or corpus was missing now report `SKIPPED` and fail
+  when `RZB_REQUIRE_INTEGRATION=1`; `tools/MakeCorpus.py` generates a deterministic synthetic corpus so they run
+  everywhere; an out-of-range `todo[1]` read after a failed `CHECK` is now a `REQUIRE`.
+- **`compact()` idempotency**: added `rb("sources")` watermark table supporting optional client idempotency tokens (ClickHouse §3.5 insert-hash dedup pattern) and `Config::idempotent` configuration, avoiding duplicate rows on retries (O1).
+- **Form hash collision semantic isolation**: keyed `rb_doubt` on `(form_id, form, meaning, doubt)` to prevent distinct templates with colliding 64-bit hashes from sharing semantic classifications or doubt values (O2).
+- **Pinned version mutation safety**: rejected `define()` and `retire()` modifications while pinned to historical versions ($v < latest$) (O3).
+- **Control-plane scalability and atomic swap**: added version-keyed resolution cache `resolveCache_` in `RazobillEngine` and atomic `EXCHANGE TABLES` write-then-swap in ClickHouse `rebuildDerivedLocked()` (O4).
+- **ThreadPool reentrancy guard**: added `inPoolWorker_` thread-local guard preventing recursive `parallelFor` deadlocks when called within worker tasks (O5).
+- **Supply chain & C ABI hardening**: pinned third-party GitHub Actions by full commit SHA and pinned build dependencies; zeroed `RzRecord` struct fields on error paths and removed redundant manual buffer trimming in `RazobillC.cpp` (O8, O11).
+- **Numerical stability**: scaled relative float tolerance in `ledger()` to eliminate false-positive conservation exceptions on large-scale corpora (O9).
+- **Documentation**: the thread pool is a shared FIFO, not work stealing; README storage and invertibility receipts now
+  state their comparators and provenance.
+
+---
+
 ## [1.1.7] - 2026-10-24
 
 ### Added

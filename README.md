@@ -110,12 +110,12 @@ Output:
 
 | Test or benchmark | Result | Dataset and hardware | Source artifact |
 | :--- | :--- | :--- | :--- |
-| Invertibility audit | 0 mismatches across 69.6M lines | 4,861 files, 6.82 GB raw logs | `tests/UnitCore.cpp` |
-| Long stream vs Drain3 | 0.09 s vs 26.5 s (100k lines) | SSH dataset, Windows 11 (12 cores) | `tools/BenchDrain.py` |
-| DuckDB storage | 2.88 MB vs 6.29 MB raw (0.46× / 54% reduction) | 134,815 events, DuckDB (CC-d) | `evidence/ResultsE7Default.txt` |
+| Invertibility audit | Exactly invertible (6.6M adversarial inputs, 0 mismatches) | Standalone and libFuzzer suites | `tests/UnitCore.cpp`, `tests/fuzz/FuzzDecomposeReconstruct.cpp` |
+| Long stream vs Drain3 | Order of magnitude faster than Drain3 on repetitive logs (0.09 s vs 26.5 s) | SSH dataset, Windows 11 (12 cores) | `tools/BenchDrain.py` |
+| DuckDB storage | 54% smaller in DuckDB's native format on 134,815-event LogHub slice (2.88 MB vs 6.29 MB raw, 0.46×). Parquet zstd-19 on the same corpus: 0.98 MB compact vs 0.87 MB raw (1.13×); saving depends on string cardinality | 134,815 events, DuckDB (CC-d) | `tools/FetchLogHubCorpus.py`, `evidence/ResultsE7Default.txt` |
 | Parquet on S3 | 85.5% to 94.8% text footprint reduction | LogHub corpora, Zstd compression | `tools/BenchCLP.py` |
 
-Benchmarks run on Windows 11 (12 cores). S3 savings evaluated via simulated storage models. Full reproducibility scripts in `tools/` and `evidence/`. Full comparison details: [docs/explanation/benchmarks.md](docs/explanation/benchmarks.md).
+Benchmarks run on Windows 11 (12 cores). S3 savings evaluated via simulated storage models. Full reproducibility scripts in `tools/` and `evidence/`. Downloadable LogHub corpus with SHA-256 verification available via `python tools/FetchLogHubCorpus.py`. Full comparison details: [docs/explanation/benchmarks.md](docs/explanation/benchmarks.md).
 
 ---
 

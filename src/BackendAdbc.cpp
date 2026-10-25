@@ -262,6 +262,9 @@ public:
         return t;
     }
 
+    void lock() override { txMutex_.lock(); }
+    void unlock() override { txMutex_.unlock(); }
+
 private:
     /// execute SQL statement and decode output Arrow batches into Table
     void run(std::string_view sql, Table* out) {
@@ -401,6 +404,7 @@ private:
     void* lib_ = nullptr;
     std::vector<void*> preloadHandles_;
     mutable std::mutex connMutex_;
+    mutable std::mutex txMutex_;
     AdbcDriver driver_{};
     AdbcDatabase db_{};
     AdbcConnection conn_{};

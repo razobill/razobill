@@ -18,6 +18,11 @@
 
 namespace razobill::core {
 
+// -- thread pool worker reentrancy tracking -----------------------------------
+
+/// marks whether current thread is actively executing within a ThreadPool worker
+inline thread_local bool inPoolWorker_ = false;
+
 // -- worker thread pool -------------------------------------------------------
 
 /// multi-core worker pool amortizing task synchronization across coarse chunks
@@ -35,6 +40,7 @@ public:
             workers_.reserve(threadCount);
             for (std::size_t i = 0; i < threadCount; ++i) {
                 workers_.emplace_back([this]() {
+                    inPoolWorker_ = true;
                     while (true) {
                         std::function<void()> task;
                         {
@@ -85,6 +91,8 @@ public:
 
     /// detaches all background worker threads
     /// inv: allows process exit without waiting for worker thread joins
+    /// \warning Only safe when the pool is intentionally leaked for the entire
+    /// lifetime of the process (e.g., Python runtime extension finalization).
     void detachWorkers() {
         for (auto& worker : workers_) {
             if (worker.joinable()) worker.detach();
@@ -144,7 +152,7 @@ public:
             const std::size_t count = workers_.empty() ? 1 : workers_.size();
             chunkSize = std::max<std::size_t>(1, total / count + (total % count != 0 ? 1 : 0));
         }
-        if (workers_.empty() || total <= chunkSize) {
+        if (inPoolWorker_ || workers_.empty() || total <= chunkSize) {
             fn(0, total);
             return;
         }

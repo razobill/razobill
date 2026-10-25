@@ -59,8 +59,12 @@ int main(int argc, char** argv) {
             return 1;
         }
     } else {
-        const std::vector<std::string> candidates = {"logs/SSH/SSH.log", "logs/Linux/Linux.log",
-                                                     "logs/Zookeeper/Zookeeper.log", "/tmp/corpus.txt"};
+        const std::vector<std::string> candidates = {"build/corpus.txt",
+                                                     "logs/SSH/SSH.log",
+                                                     "logs/Linux/Linux.log",
+                                                     "logs/Zookeeper/Zookeeper.log",
+                                                     "/tmp/corpus.txt",
+                                                     "tests/ConformanceCorpus.txt"};
         for (const auto& c : candidates) {
             std::ifstream check(c);
             if (check.is_open()) {

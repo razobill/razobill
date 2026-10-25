@@ -49,13 +49,15 @@ When you call `rz.split_many(lines)` (or `rz.RzSplitMany`):
 
 ---
 
-## Work-stealing thread pool (`ThreadPool.hpp`)
+## Shared-queue thread pool (`ThreadPool.hpp`)
 
-For batch tasks, librazobill includes a cache-aware work-stealing thread pool:
+For batch tasks, librazobill includes a small fixed-size thread pool:
 
-- Worker threads maintain local work queues.
-- When an idle worker exhausts its local batch, it steals tasks from the tail of another worker's queue.
-- This balances uneven workloads (such as mixed short syslog messages and long Java stack traces) across all CPU cores.
+- One FIFO task queue guarded by one mutex and condition variable; there are no per-worker queues and no work stealing.
+- `parallelFor` cuts the range into chunks (at least `kMinChunk` items each, at most a few per worker) so queue contention stays negligible next to the per-chunk work, and it blocks until every chunk has finished.
+- Uneven workloads (short syslog lines mixed with long stack traces) are balanced only through chunking: a worker that finishes early takes the next chunk from the shared queue.
+- The queue is unbounded: `submit` never blocks. Callers that produce tasks faster than they complete must bound their own backlog.
+- Calling `parallelFor` from inside a pool worker executes sequentially on that worker thread to prevent queue deadlock.
 
 ---
 

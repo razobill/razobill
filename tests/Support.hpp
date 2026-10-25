@@ -85,17 +85,21 @@ inline razobill::AdbcOptions duckdbOptions() {
     const char* defLib = "/usr/local/lib/libduckdb.so";
     const char* defExt = "build/librazobill.duckdb_extension";
     std::string chosenLib = env("RZB_DUCKDB_LIB", defLib);
+    std::error_code ecLinux;
+    if (!std::filesystem::exists(chosenLib, ecLinux) && !std::getenv("RZB_DUCKDB_LIB")) {
+        const std::array<const char*, 3> linuxCandidates = {"build/libduckdb.so", "libduckdb.so", "/usr/lib/libduckdb.so"};
+        for (const char* c : linuxCandidates) {
+            if (std::filesystem::exists(c, ecLinux)) {
+                chosenLib = c;
+                break;
+            }
+        }
+    }
 #endif
+#if defined(_WIN32)
     std::error_code ecLib;
     if (!std::filesystem::exists(chosenLib, ecLib) && !std::getenv("RZB_DUCKDB_LIB")) {
-#if defined(_WIN32)
         FILE* fp = _popen("python -c \"import _duckdb; print(_duckdb.__file__)\" 2>nul", "r");
-#else
-        FILE* fp = popen("python3 -c \"import _duckdb; print(_duckdb.__file__)\" 2>/dev/null", "r");
-        if (!fp) {
-            fp = popen("python -c \"import _duckdb; print(_duckdb.__file__)\" 2>/dev/null", "r");
-        }
-#endif
         if (fp) {
             char buf[1024];
             if (fgets(buf, sizeof(buf), fp)) {
@@ -105,13 +109,10 @@ inline razobill::AdbcOptions duckdbOptions() {
                     chosenLib = p;
                 }
             }
-#if defined(_WIN32)
             _pclose(fp);
-#else
-            pclose(fp);
-#endif
         }
     }
+#endif
     o.driverPath = o.driver_path = normalizePath(chosenLib);
     o.entrypoint = "duckdb_adbc_init";
     o.databaseOptions = o.database_options = {{"path", ":memory:"}, {"allow_unsigned_extensions", "true"}};

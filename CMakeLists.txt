@@ -273,19 +273,7 @@ if(NOT RAZOBILL_BUILD_EXT_ONLY)
   endif()
   target_link_libraries(IntegrationDuckdb PRIVATE librazobill)
   add_test(NAME integration_duckdb COMMAND IntegrationDuckdb)
-  if(Python3_FOUND)
-    execute_process(
-      COMMAND ${Python3_EXECUTABLE} -c "import _duckdb; print(_duckdb.__file__)"
-      OUTPUT_VARIABLE DUCKDB_LIB_PATH
-      OUTPUT_STRIP_TRAILING_WHITESPACE
-      ERROR_QUIET
-    )
-  endif()
-  if(DUCKDB_LIB_PATH)
-    set_tests_properties(integration_duckdb PROPERTIES ENVIRONMENT "RZB_EXT=${CMAKE_BINARY_DIR}/librazobill.duckdb_extension;RZB_DUCKDB_LIB=${DUCKDB_LIB_PATH}")
-  else()
-    set_tests_properties(integration_duckdb PROPERTIES ENVIRONMENT "RZB_EXT=${CMAKE_BINARY_DIR}/librazobill.duckdb_extension")
-  endif()
+  set_tests_properties(integration_duckdb PROPERTIES ENVIRONMENT "RZB_EXT=${CMAKE_BINARY_DIR}/librazobill.duckdb_extension")
 
   add_executable(IntegrationChdb tests/IntegrationChdb.cpp)
   target_include_directories(IntegrationChdb PRIVATE thirdparty include tests)

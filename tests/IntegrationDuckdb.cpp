@@ -24,9 +24,15 @@ using namespace razobill;
 namespace {
 bool duckdbAvailable() {
     static const bool avail = [] {
-        const auto opt = support::duckdbOptions();
-        std::error_code ec;
-        return std::filesystem::exists(opt.driverPath, ec);
+        try {
+            const auto opt = support::duckdbOptions();
+            std::error_code ec;
+            if (opt.driverPath.empty() || !std::filesystem::exists(opt.driverPath, ec)) return false;
+            auto b = makeAdbcBackend(opt);
+            return b != nullptr;
+        } catch (...) {
+            return false;
+        }
     }();
     return avail;
 }

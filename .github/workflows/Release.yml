@@ -154,7 +154,7 @@ jobs:
           cp -r thirdparty/adbc lib/python/thirdpartyCore/adbc
           cp -r thirdparty/duckdbcapi lib/python/thirdpartyCore/duckdbcapi
       - name: Set up QEMU for aarch64 Emulation
-        uses: docker/setup-qemu-action@49b01bf8234af638b507b9564ad7403465c83023 # v3.2.0
+        uses: docker/setup-qemu-action@v3
         with:
           platforms: arm64
       - name: Install cibuildwheel

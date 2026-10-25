@@ -52,9 +52,16 @@ jobs:
         run: |
           ninja -C build
 
+      - name: Fetch Test Corpus
+        run: |
+          python tools/FetchLogHubCorpus.py build/corpus.parquet
+
       - name: Run C++ Unit & Integration Tests
         run: |
+          export RZB_DUCKDB_LIB=$(python -c "import _duckdb; print(_duckdb.__file__)" 2>/dev/null || true)
+          export RZB_CORPUS_PARQUET="build/corpus.parquet"
           ctest --test-dir build --output-on-failure -C Debug
+          ./build/IntegrationDuckdb
 
       - name: Collect C++ LCOV Coverage Report
         run: |

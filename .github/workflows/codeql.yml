@@ -49,7 +49,7 @@ jobs:
           sudo apt-get update && sudo apt-get install -y ninja-build libduckdb-dev || true
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@b56ba49b26e50535fa1e7f7db0f4f7b47f4d7a9e # v3.28.10
+        uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
           queries: +security-and-quality
@@ -63,6 +63,6 @@ jobs:
           ninja -C build
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@b56ba49b26e50535fa1e7f7db0f4f7b47f4d7a9e # v3.28.10
+        uses: github/codeql-action/analyze@v3
         with:
           category: "/language:${{ matrix.language }}"

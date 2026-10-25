@@ -752,7 +752,7 @@ std::vector<RazobillEngine::FormP> RazobillEngine::resolveLocked(const std::vect
         }
         for (std::size_t r = 0; r < t.rows.size(); ++r) {
             const auto id = t.u64(r, 0);
-            const auto formStr = t.str(r, 1);
+            const auto& formStr = t.str(r, 1);
             w[{id, formStr, rule.meaning}] += rule.weight;
             total[{id, formStr}] += rule.weight;
         }

@@ -190,7 +190,7 @@ except ImportError:
 version_file = repoRoot / "VERSION"
 if not version_file.exists():
     version_file = baseDir / "VERSION"
-version_str = version_file.read_text(encoding="utf-8").strip() if version_file.exists() else "1.1.7"
+version_str = version_file.read_text(encoding="utf-8").strip() if version_file.exists() else "1.1.8"
 
 setup(
     version=version_str,

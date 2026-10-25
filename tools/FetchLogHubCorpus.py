@@ -44,7 +44,7 @@ def fetch_and_verify(
         print(f"[FetchLogHub] Downloading {name} from {url}...")
         try:
             req = urllib.request.Request(
-                url, headers={"User-Agent": "Razobill-Corpus-Fetcher/1.1.7"}
+                url, headers={"User-Agent": "Razobill-Corpus-Fetcher/1.1.8"}
             )
             with urllib.request.urlopen(req, timeout=15) as resp:
                 downloaded = resp.read()

@@ -349,7 +349,7 @@ def RzHash(line: Union[str, bytes]) -> int:
 
 # -- package metadata and public symbols ---------------------------------------
 
-__version__ = "1.1.7"
+__version__ = "1.1.8"
 
 # public export surface pinned to <= 8 symbols per TestPyRazobill compliance
 __all__ = [

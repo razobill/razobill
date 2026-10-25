@@ -9,7 +9,7 @@
 extension:
   name: razobill
   description: High-performance lossless log parsing, analytical database compaction, and information-theoretic semantic accounting.
-  version: 1.1.7
+  version: 1.1.8
   language: C++
   build: cmake
   license: Apache-2.0

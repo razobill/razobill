@@ -38,6 +38,27 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
+## [1.1.8] - 2026-10-25
+
+### Added
+
+- **Reproducible LogHub 2.0 Dataset Pipeline**:
+  - Added `tools/FetchLogHubCorpus.py` and `tests/data/corpus-manifest.json` downloading authentic LogHub slices (OpenSSH, HDFS, Linux, BGL, Apache, Zookeeper) with cryptographic SHA-256 validation.
+- **Coverage-Guided Continuous libFuzzer Pipeline**:
+  - Added `tests/fuzz/razobill.dict`, authentic log seed corpus, local runner `tools/RunLibFuzzer.py`, and scheduled `.github/workflows/fuzzing.yml` running under Clang with AddressSanitizer and UndefinedBehaviorSanitizer.
+- **Control-Plane Multi-Threaded Concurrency Hardening**:
+  - Added connection-level transaction serialization (`Backend::lock()` / `unlock()`, `txMutex_`) preventing transaction conflicts across concurrent engines sharing a single connection.
+  - Added dedicated concurrency stress test in `tests/IntegrationDuckdb.cpp` (two threads, two engines, one connection) running 100 concurrent iterations with zero errors.
+
+### Fixed
+
+- **GitHub Actions Action Resolution**:
+  - Normalized action references across all workflows to stable version tags (`ilammy/msvc-dev-cmd@v1`, `github/codeql-action/init@v3`, `codecov/codecov-action@v5`, `dependabot/fetch-metadata@v2`) and pinned official GitHub actions by immutable commit SHA.
+- **Clang-Tidy Diagnostics**:
+  - Replaced copy initialization of `formStr` with `const auto& formStr` in `src/Razobill.cpp`, satisfying `-Werror=performance-unnecessary-copy-initialization`.
+
+---
+
 ## [1.1.7] - 2026-10-24
 
 ### Added

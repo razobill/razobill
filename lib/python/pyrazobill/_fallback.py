@@ -477,4 +477,4 @@ def version() -> str:
 
         return __version__
     except ImportError:
-        return "1.1.7"
+        return "1.1.8"

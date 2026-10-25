@@ -132,3 +132,4 @@ gmon.out
 target/
 .superpowers/
 .zcode/
+scratch/
